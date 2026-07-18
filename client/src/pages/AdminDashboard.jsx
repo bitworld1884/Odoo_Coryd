@@ -136,16 +136,20 @@ function Employees() {
 
       {list === null ? <Spinner /> : (
         <Card className="p-5">
-          <h2 className="mb-3 font-semibold text-slate-700">Employees ({list.length})</h2>
-          <div className="divide-y divide-slate-100">
+          <h2 className="mb-3 font-semibold text-slate-700 dark:text-slate-200">Employees ({list.length})</h2>
+          <div className="divide-y divide-slate-100 dark:divide-slate-700">
             {list.map((e) => (
               <div key={e.employee_id} className="flex items-center justify-between py-2.5 text-sm">
                 <div>
-                  <div className="font-medium text-slate-700">{e.full_name} <Badge status={e.status}>{e.status}</Badge></div>
-                  <div className="text-xs text-slate-400">{e.email} · {e.department || '—'} · {e.designation || '—'}</div>
+                  <div className="font-medium text-slate-700 dark:text-slate-300">
+                    {e.full_name} <Badge status={e.status}>{e.status}</Badge>
+                  </div>
+                  <div className="text-xs text-slate-400">
+                    {e.email} · {e.department || '—'} · {e.designation || '—'}
+                  </div>
                 </div>
                 <Select value={e.status} onChange={(ev) => setStatus(e.employee_id, ev.target.value)} className="w-36">
-                  {['ACTIVE', 'INACTIVE', 'SUSPENDED'].map((s) => <option key={s}>{s}</option>)}
+                  {['PENDING', 'ACTIVE', 'INACTIVE', 'SUSPENDED'].map((s) => <option key={s}>{s}</option>)}
                 </Select>
               </div>
             ))}
