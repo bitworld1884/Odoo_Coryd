@@ -1,8 +1,10 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { useEffect } from 'react';
+import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from './auth/AuthContext.jsx';
 import Layout from './components/Layout.jsx';
+import LandingSplash from './components/LandingSplash.jsx';
+import LoadingSplash from './components/LoadingSplash.jsx';
 
-import Splash from './pages/Splash.jsx';
 import Login from './pages/Login.jsx';
 import Signup from './pages/Signup.jsx';
 import Dashboard from './pages/Dashboard.jsx';
@@ -19,7 +21,7 @@ import AdminDashboard from './pages/AdminDashboard.jsx';
 function Protected({ children, adminOnly }) {
   const { user, loading } = useAuth();
   const location = window.location;
-  if (loading) return <div className="p-10 text-center text-slate-500">Loading…</div>;
+  if (loading) return <LoadingSplash message="Loading…" />;
   if (!user) {
     const next = encodeURIComponent(location.pathname + location.search + location.hash);
     return <Navigate to={`/login?next=${next}`} replace />;
@@ -33,12 +35,21 @@ function AppHome() {
   return user?.isAdmin ? <AdminDashboard /> : <Dashboard />;
 }
 
+function Landing() {
+  const navigate = useNavigate();
+  useEffect(() => {
+    const t = setTimeout(() => navigate('/login', { replace: true }), 4600);
+    return () => clearTimeout(t);
+  }, [navigate]);
+  return <LandingSplash />;
+}
+
 export default function App() {
   const { user, loading } = useAuth();
 
   return (
     <Routes>
-      <Route path="/" element={loading ? null : user ? <Navigate to="/app" replace /> : <Splash />} />
+      <Route path="/" element={loading ? <LoadingSplash /> : user ? <Navigate to="/app" replace /> : <Landing />} />
       <Route path="/login" element={<Login />} />
       <Route path="/signup" element={<Signup />} />
 

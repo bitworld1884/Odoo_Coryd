@@ -44,7 +44,7 @@ export default function RazorpayButton({ tripId, amount, onSuccess, onError, dis
           key:         orderData.keyId,
           amount:      orderData.amount,      // paise
           currency:    orderData.currency || 'INR',
-          name:        'Carpool Platform',
+          name:        'CoRYD',
           description: 'Ride payment',
           order_id:    orderData.orderId,
           theme:       { color: '#0d9488' },

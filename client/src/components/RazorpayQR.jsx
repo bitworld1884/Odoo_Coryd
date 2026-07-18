@@ -91,7 +91,7 @@ export default function RazorpayQR({ tripId, amount, onSuccess, onClose }) {
 
   /* ── UPI deep-link fallback (for mobile "open UPI app") ── */
   const upiLink = qrData
-    ? `upi://pay?pa=&pn=CarpoolPlatform&am=${amount}&cu=INR&tn=Carpool+Trip+Payment`
+    ? `upi://pay?pa=&pn=CoRYD&am=${amount}&cu=INR&tn=CoRYD+Trip+Payment`
     : null;
 
   return (

@@ -27,7 +27,7 @@ export default function Login() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-brand/10 to-white px-4">
       <Card className="w-full max-w-md p-8">
-        <Link to="/" className="text-xl font-extrabold text-brand-dark">🚗 Carpool</Link>
+        <Link to="/" className="text-xl font-extrabold text-brand-dark">🚗 CoRYD</Link>
         <h1 className="mt-4 text-2xl font-bold text-slate-800">Welcome back</h1>
         <p className="text-sm text-slate-500">Log in to your organization account.</p>
         <form onSubmit={submit} className="mt-6 space-y-4">

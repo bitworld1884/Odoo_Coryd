@@ -81,7 +81,7 @@ export default function Layout() {
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
           <div className="flex items-center gap-2">
             <button className="md:hidden text-slate-600" onClick={() => setOpen((o) => !o)}>☰</button>
-            <Link to="/app" className="text-lg font-extrabold tracking-tight text-brand-dark">🚗 Carpool</Link>
+            <Link to="/app" className="text-lg font-extrabold tracking-tight text-brand-dark">🚗 CoRYD</Link>
             <span className="ml-2 hidden rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500 sm:inline">{user?.orgName}</span>
           </div>
           <div className="flex items-center gap-3">

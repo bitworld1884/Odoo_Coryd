@@ -28,3 +28,4 @@ api.interceptors.response.use(
 export const apiError = (err) => err?.response?.data?.error || err?.message || 'Something went wrong';
 
 export default api;
+           

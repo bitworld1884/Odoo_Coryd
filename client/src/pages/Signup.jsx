@@ -28,7 +28,7 @@ export default function Signup() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-brand/10 to-white px-4 py-10">
       <Card className="w-full max-w-lg p-8">
-        <Link to="/" className="text-xl font-extrabold text-brand-dark">🚗 Carpool</Link>
+        <Link to="/" className="text-xl font-extrabold text-brand-dark">🚗 CoRYD</Link>
         <h1 className="mt-4 text-2xl font-bold text-slate-800">Create your account</h1>
         <p className="text-sm text-slate-500">Join your organization using its code (try <b>ACME</b>).</p>
         <form onSubmit={submit} className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
