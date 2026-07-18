@@ -3,45 +3,28 @@
 export const LOGO_SRC = '/logo.png';
 
 const sizeMap = {
-  xs: { box: 'h-8 w-8',   pad: 'p-1',   text: 'text-sm'  },
-  sm: { box: 'h-9 w-9',   pad: 'p-1',   text: 'text-lg'  },
-  md: { box: 'h-11 w-11', pad: 'p-1.5', text: 'text-xl'  },
-  lg: { box: 'h-14 w-14', pad: 'p-2',   text: 'text-2xl' },
-  xl: { box: 'h-20 w-20', pad: 'p-2.5', text: 'text-3xl' },
+  xs: { box: 'h-16 w-16',            text: 'text-sm'  },
+  sm: { box: 'h-[4.5rem] w-[4.5rem]', text: 'text-lg'  },
+  md: { box: 'h-[5.5rem] w-[5.5rem]', text: 'text-xl'  },
+  lg: { box: 'h-28 w-28',            text: 'text-2xl' },
+  xl: { box: 'h-40 w-40',            text: 'text-3xl' },
 };
 
 /**
- * Logo — just the mark, in a frosted glass tile.
+ * Logo — the bare mark, no background tile.
  *
- * @param size   xs | sm | md | lg | xl
- * @param plain  render the bare image with no glass tile
+ * @param size  xs | sm | md | lg | xl
  */
-export function Logo({ size = 'sm', className = '', plain = false, alt = 'CoRYD' }) {
+export function Logo({ size = 'sm', className = '', alt = 'CoRYD' }) {
   const s = sizeMap[size] ?? sizeMap.sm;
 
-  if (plain) {
-    return (
-      <img
-        src={LOGO_SRC}
-        alt={alt}
-        className={`${s.box} shrink-0 object-contain ${className}`}
-        draggable="false"
-      />
-    );
-  }
-
   return (
-    <span
-      className={[
-        s.box, s.pad,
-        'inline-flex shrink-0 items-center justify-center rounded-xl',
-        'bg-white/70 ring-1 ring-white/70 backdrop-blur-md',
-        'shadow-[0_4px_14px_-2px_rgba(59,7,100,0.22),inset_0_1px_0_rgba(255,255,255,0.9)]',
-        className,
-      ].join(' ')}
-    >
-      <img src={LOGO_SRC} alt={alt} className="h-full w-full object-contain" draggable="false" />
-    </span>
+    <img
+      src={LOGO_SRC}
+      alt={alt}
+      className={`${s.box} shrink-0 object-contain ${className}`}
+      draggable="false"
+    />
   );
 }
 

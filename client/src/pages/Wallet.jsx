@@ -71,7 +71,7 @@ export default function Wallet() {
                 </div>
                 <div className="mt-2 text-4xl font-extrabold tracking-tight">{money(wallet.balance)}</div>
               </div>
-              <Logo size="md" className="bg-white/25 ring-white/30" />
+              <Logo size="md" />
             </div>
 
             <div className="mt-5 text-xs text-white/60">Verified &amp; secured by organization portal</div>

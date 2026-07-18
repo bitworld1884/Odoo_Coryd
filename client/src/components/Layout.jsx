@@ -146,7 +146,7 @@ export default function Layout() {
         ].join(' ')}
       >
         {/* Sidebar Header: Brand Logo */}
-        <div className="flex h-16 items-center justify-between border-b border-white/50 px-4">
+        <div className="flex h-20 items-center justify-between border-b border-white/50 px-4">
           <Link to="/app" className="flex items-center gap-2.5 overflow-hidden">
             {collapsed ? (
               <Logo size="sm" />
@@ -243,7 +243,7 @@ export default function Layout() {
           />
 
           <aside className="glass-panel relative flex h-full w-64 max-w-xs animate-riseIn flex-col rounded-r-3xl">
-            <div className="flex h-16 items-center justify-between border-b border-white/50 px-4">
+            <div className="flex h-20 items-center justify-between border-b border-white/50 px-4">
               <Link to="/app" onClick={() => setOpen(false)}>
                 <Brand size="sm" />
               </Link>
@@ -295,7 +295,7 @@ export default function Layout() {
       <div className="flex h-full min-w-0 flex-1 flex-col overflow-hidden">
 
         {/* Top Header Bar */}
-        <header className="glass-chrome z-30 flex h-16 shrink-0 items-center justify-between border-b px-4 sm:px-6">
+        <header className="glass-chrome z-30 flex h-20 shrink-0 items-center justify-between border-b px-4 sm:px-6">
 
           {/* Mobile hamburger menu toggle */}
           <div className="flex items-center gap-3">
