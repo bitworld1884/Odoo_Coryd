@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { X, Smartphone, CheckCircle, XCircle } from 'lucide-react';
+import { X, Smartphone, CircleCheck, XCircle } from 'lucide-react';
 import api from '../api.js';
 import { Button } from './ui.jsx';
 
@@ -98,15 +98,15 @@ export default function RazorpayQR({ tripId, amount, onSuccess, onClose }) {
   return (
     /* Backdrop */
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-brand-deep/50 p-4 backdrop-blur-md"
       onClick={(e) => { if (e.target === e.currentTarget) onClose?.(); }}
     >
-      <div className="relative w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl mx-4">
+      <div className="glass-panel relative w-full max-w-sm animate-riseIn rounded-3xl p-6">
 
         {/* Close button */}
           <button
           onClick={onClose}
-          className="absolute right-4 top-4 text-slate-400 hover:text-slate-600"
+          className="absolute right-4 top-4 rounded-lg p-1 text-ink-400 transition hover:bg-white/70 hover:text-brand"
         >
           <X className="h-4 w-4" />
         </button>
@@ -114,8 +114,8 @@ export default function RazorpayQR({ tripId, amount, onSuccess, onClose }) {
         {/* Header */}
         <div className="mb-5 text-center">
           <div className="mb-1 flex justify-center text-brand"><Smartphone className="h-8 w-8" /></div>
-          <h2 className="text-lg font-bold text-slate-800">Scan to Pay</h2>
-          <p className="text-sm text-slate-500">
+          <h2 className="text-lg font-extrabold text-ink-900">Scan to Pay</h2>
+          <p className="text-sm text-ink-500">
             Use any UPI app — GPay, PhonePe, Paytm, BHIM
           </p>
         </div>
@@ -123,11 +123,11 @@ export default function RazorpayQR({ tripId, amount, onSuccess, onClose }) {
         {/* ── Loading ── */}
         {phase === 'loading' && (
           <div className="flex flex-col items-center gap-3 py-10">
-            <svg className="animate-spin h-10 w-10 text-teal-500" viewBox="0 0 24 24" fill="none">
+            <svg className="h-10 w-10 animate-spin text-brand" viewBox="0 0 24 24" fill="none">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
             </svg>
-            <p className="text-sm text-slate-500">Generating QR code…</p>
+            <p className="text-sm text-ink-500">Generating QR code…</p>
           </div>
         )}
 
@@ -135,15 +135,15 @@ export default function RazorpayQR({ tripId, amount, onSuccess, onClose }) {
         {phase === 'ready' && qrData && (
           <>
             {/* Amount badge */}
-            <div className="mb-4 rounded-2xl bg-teal-50 px-4 py-3 text-center">
-              <p className="text-xs text-teal-600 font-medium">Amount to pay</p>
-              <p className="text-3xl font-bold text-teal-700">₹{Number(amount).toFixed(2)}</p>
+            <div className="mb-4 rounded-2xl bg-brand/10 px-4 py-3 text-center ring-1 ring-brand/20">
+              <p className="text-xs font-bold uppercase tracking-wider text-brand">Amount to pay</p>
+              <p className="text-3xl font-extrabold text-brand-dark">₹{Number(amount).toFixed(2)}</p>
             </div>
 
             {/* QR image from Razorpay (preferred) or fallback SVG */}
             <div className="flex justify-center mb-4">
               {qrData.imageUrl ? (
-                <div className="rounded-2xl border-4 border-teal-100 p-2 shadow-inner">
+                <div className="rounded-2xl border-4 border-brand/15 bg-white/80 p-2 shadow-inner">
                   <img
                     src={qrData.imageUrl}
                     alt="Razorpay UPI QR Code"
@@ -152,12 +152,12 @@ export default function RazorpayQR({ tripId, amount, onSuccess, onClose }) {
                 </div>
               ) : (
                 /* Fallback: generate QR locally from UPI link */
-                <div className="rounded-2xl border-4 border-teal-100 p-3 shadow-inner bg-white">
+                <div className="rounded-2xl border-4 border-brand/15 bg-white p-3 shadow-inner">
                   <QRCodeSVG
                     value={upiLink}
                     size={200}
                     bgColor="#ffffff"
-                    fgColor="#0f766e"
+                    fgColor="#5b21b6"
                     level="H"
                     includeMargin={false}
                   />
@@ -167,10 +167,10 @@ export default function RazorpayQR({ tripId, amount, onSuccess, onClose }) {
 
             {/* Countdown */}
             <div className="mb-4 flex items-center justify-center gap-2">
-              <span className="inline-block h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-sm text-slate-500">
+              <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-brand" />
+              <span className="text-sm text-ink-500">
                 Waiting for payment · expires in{' '}
-                <span className={`font-mono font-bold ${timeLeft < 60 ? 'text-rose-500' : 'text-slate-700'}`}>
+                <span className={`font-mono font-bold ${timeLeft < 60 ? 'text-rose-500' : 'text-ink-700'}`}>
                   {fmtTime(timeLeft)}
                 </span>
               </span>
@@ -179,11 +179,11 @@ export default function RazorpayQR({ tripId, amount, onSuccess, onClose }) {
             {/* Mobile UPI deep link */}
             <a
               href={upiLink}
-              className="block w-full rounded-xl bg-gradient-to-r from-teal-500 to-teal-600 py-3 text-center text-sm font-semibold text-white shadow hover:from-teal-600 hover:to-teal-700 transition mb-2"
+              className="mb-2 block w-full rounded-xl border border-white/20 bg-gradient-to-br from-brand to-brand-dark py-3 text-center text-sm font-bold text-white shadow-glow transition hover:from-brand-mid hover:to-brand active:scale-95"
             >
               <Smartphone className="h-4 w-4" /> Open UPI App directly
             </a>
-            <p className="text-center text-xs text-slate-400">
+            <p className="text-center text-xs text-ink-400">
               QR refreshes automatically once paid
             </p>
           </>
@@ -192,11 +192,11 @@ export default function RazorpayQR({ tripId, amount, onSuccess, onClose }) {
         {/* ── Paid ── */}
         {phase === 'paid' && (
           <div className="flex flex-col items-center gap-3 py-8">
-            <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-100">
-              <CheckCircle className="h-12 w-12 text-emerald-500" strokeWidth={1.5} />
+            <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-100 ring-4 ring-emerald-50">
+              <CircleCheck className="h-12 w-12 text-emerald-500" strokeWidth={1.5} />
             </div>
-            <p className="text-xl font-bold text-emerald-700">Payment received!</p>
-            <p className="text-sm text-slate-500">
+            <p className="text-xl font-extrabold text-emerald-700">Payment received!</p>
+            <p className="text-sm text-ink-500">
               ₹{Number(amount).toFixed(2)} paid successfully via Razorpay
             </p>
           </div>

@@ -11,17 +11,17 @@ const pinIcon = (color) =>
     iconAnchor: [9, 18],
   });
 
-const pickupIcon = pinIcon('#0d9488');
-const destIcon   = pinIcon('#e11d48');
+const pickupIcon = pinIcon('#7c3aed');
+const destIcon   = pinIcon('#3b0764');
 
 const carIcon = L.divIcon({
   className: 'car-pin',
   html: `
     <div style="position:relative;width:36px;height:36px">
-      <div style="position:absolute;inset:0;border-radius:50%;background:rgba(22,163,74,.2);animation:carPing 1.6s ease-out infinite"></div>
-      <div style="position:absolute;inset:6px;border-radius:50%;background:rgba(22,163,74,.35);animation:carPing 1.6s ease-out infinite .4s"></div>
+      <div style="position:absolute;inset:0;border-radius:50%;background:rgba(124,58,237,.22);animation:carPing 1.6s ease-out infinite"></div>
+      <div style="position:absolute;inset:6px;border-radius:50%;background:rgba(124,58,237,.38);animation:carPing 1.6s ease-out infinite .4s"></div>
       <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center">
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#15803d" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5b21b6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M5 17H3a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h2"/>
           <path d="M19 17h2a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-2"/>
           <rect x="5" y="7" width="14" height="10" rx="1"/>
@@ -38,8 +38,8 @@ const myLocIcon = L.divIcon({
   className: 'my-loc-pin',
   html: `
     <div style="position:relative;width:24px;height:24px">
-      <div style="position:absolute;inset:-4px;border-radius:50%;background:rgba(59,130,246,.25);animation:carPing 2s ease-out infinite"></div>
-      <div style="position:absolute;inset:0;border-radius:50%;background:#3b82f6;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.4)"></div>
+      <div style="position:absolute;inset:-4px;border-radius:50%;background:rgba(113,113,138,.28);animation:carPing 2s ease-out infinite"></div>
+      <div style="position:absolute;inset:0;border-radius:50%;background:#71718a;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.4)"></div>
     </div>`,
   iconSize: [24, 24],
   iconAnchor: [12, 12],
@@ -206,7 +206,7 @@ export default function MapView({
           {ahead && ahead.length >= 2 && (
             <Polyline
               positions={ahead}
-              pathOptions={{ color: '#0d9488', weight: 5, opacity: 0.85 }}
+              pathOptions={{ color: '#7c3aed', weight: 5, opacity: 0.85 }}
             />
           )}
         </>
@@ -214,7 +214,7 @@ export default function MapView({
         routeLine && routeLine.length >= 2 && (
           <Polyline
             positions={routeLine}
-            pathOptions={{ color: '#0d9488', weight: 5, opacity: 0.78, lineJoin: 'round', lineCap: 'round' }}
+            pathOptions={{ color: '#7c3aed', weight: 5, opacity: 0.78, lineJoin: 'round', lineCap: 'round' }}
           />
         )
       )}

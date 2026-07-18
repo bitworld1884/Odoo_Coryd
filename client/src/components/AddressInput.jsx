@@ -107,7 +107,9 @@ export default function AddressInput({ label, value, onSelect, placeholder, show
 
   return (
     <div className="relative" ref={box}>
-      {label && <span className="mb-1 block text-sm font-medium text-slate-600">{label}</span>}
+      {label && (
+        <span className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-ink-500">{label}</span>
+      )}
 
       <div className="relative">
         <input
@@ -118,21 +120,21 @@ export default function AddressInput({ label, value, onSelect, placeholder, show
           onFocus={() => (results.length > 0 || showMyLocation) && setOpen(true)}
           onKeyDown={onKeyDown}
           autoComplete="off"
-          className="w-full rounded-lg border border-slate-300 px-3 py-2 pr-8 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+          className="glass-input w-full rounded-xl px-3.5 py-2.5 pr-9 text-sm text-ink-800 placeholder:text-ink-400 outline-none transition-all duration-200"
         />
 
         {/* Spinner or clear button on right */}
         {loading || locLoading ? (
-          <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400">
-            <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-brand">
+            <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+              <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
             </svg>
           </span>
         ) : q ? (
-            <button
+          <button
+            type="button"
             onClick={() => { setQ(''); setResults([]); setOpen(false); onSelect?.(null); inputRef.current?.focus(); }}
-            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-400 transition hover:text-brand"
             tabIndex={-1}
             aria-label="Clear"
           >
@@ -143,15 +145,15 @@ export default function AddressInput({ label, value, onSelect, placeholder, show
 
       {/* Dropdown */}
       {open && (
-        <ul className="absolute z-50 mt-1 max-h-72 w-full overflow-auto rounded-xl border border-slate-200 bg-white shadow-xl ring-1 ring-black/5">
+        <ul className="glass-panel absolute z-50 mt-2 max-h-72 w-full animate-riseIn overflow-auto rounded-2xl">
 
           {/* "Use my location" row */}
           {showMyLocation && (
             <li
               onClick={useMyLocation}
-              className="flex cursor-pointer items-center gap-2 border-b border-slate-100 px-3 py-2.5 text-sm font-medium text-brand-dark hover:bg-green-50"
+              className="flex cursor-pointer items-center gap-2.5 border-b border-white/60 px-3 py-2.5 text-sm font-bold text-brand-dark transition hover:bg-brand/10"
             >
-              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-green-100 text-brand">
+              <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand/12 text-brand ring-1 ring-brand/20">
                 <MapPin className="h-4 w-4" />
               </span>
               {locLoading ? 'Detecting location…' : 'Use my current location'}
@@ -160,7 +162,7 @@ export default function AddressInput({ label, value, onSelect, placeholder, show
 
           {/* Search results */}
           {results.length === 0 && !loading && (
-            <li className="px-3 py-3 text-center text-xs text-slate-400">
+            <li className="px-3 py-3.5 text-center text-xs text-ink-400">
               {q.length >= 3 ? 'No results found' : 'Type at least 3 characters'}
             </li>
           )}
@@ -170,11 +172,11 @@ export default function AddressInput({ label, value, onSelect, placeholder, show
               key={i}
               onClick={() => pick(r)}
               onMouseEnter={() => setHighlighted(i)}
-              className={`flex cursor-pointer items-start gap-2 px-3 py-2 text-sm text-slate-700 transition-colors ${
-                highlighted === i ? 'bg-teal-50 text-teal-800' : 'hover:bg-slate-50'
+              className={`flex cursor-pointer items-start gap-2 px-3 py-2.5 text-sm transition-colors ${
+                highlighted === i ? 'bg-brand/12 font-semibold text-brand-dark' : 'text-ink-700 hover:bg-white/60'
               }`}
             >
-              <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" />
+              <MapPin className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${highlighted === i ? 'text-brand' : 'text-ink-400'}`} />
               <span className="min-w-0 leading-snug">{r.label}</span>
             </li>
           ))}

@@ -1,7 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Wallet as WalletIcon, ArrowUpRight, ArrowDownLeft, PlusCircle, History } from 'lucide-react';
 import api, { apiError } from '../api.js';
-import { Button, Card, Input, Empty, Alert, money } from '../components/ui.jsx';
+import { Logo } from '../components/Brand.jsx';
+import {
+  Button, Card, Input, Empty, Alert, Spinner, PageTitle,
+  Pagination, usePagination, money,
+} from '../components/ui.jsx';
+
+const PER_PAGE = 6;
 
 export default function Wallet() {
   const [wallet, setWallet] = useState(null);
@@ -35,55 +41,49 @@ export default function Wallet() {
     }
   };
 
-  if (!wallet) {
-    return (
-      <div className="flex items-center justify-center p-12">
-        <div className="flex items-center gap-3 text-slate-400">
-          <svg className="h-5 w-5 animate-spin text-brand" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-20" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
-            <path className="opacity-80" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-          </svg>
-          <span className="text-sm font-medium">Loading wallet…</span>
-        </div>
-      </div>
-    );
-  }
+  const pager = usePagination(wallet?.transactions, PER_PAGE);
+
+  if (!wallet) return <Spinner label="Loading wallet…" />;
 
   return (
     <div className="space-y-6">
-      {/* Title */}
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Wallet</h1>
-        <p className="mt-1 text-sm text-slate-500">Manage your balance and view transaction history.</p>
-      </div>
+      <PageTitle icon={WalletIcon} subtitle="Manage your balance and view transaction history.">
+        Wallet
+      </PageTitle>
 
       {/* Two-column layout grid on desktop */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-        
+
         {/* Left Column: Balance & Recharge (takes 5/12) */}
         <div className="space-y-6 lg:col-span-5">
-          
+
           {/* Card 1: Available Balance */}
-          <Card className="relative overflow-hidden bg-gradient-to-br from-brand to-brand-dark p-6 text-white shadow-card">
+          <Card variant="violet" className="relative overflow-hidden rounded-[20px] p-6">
             {/* Background design accents */}
-            <div className="absolute -right-6 -top-6 h-24 w-24 rounded-full bg-white/10" />
-            <div className="absolute -bottom-8 right-12 h-20 w-20 rounded-full bg-white/10" />
-            
-            <div className="flex items-center gap-2 text-sm font-medium opacity-90">
-              <WalletIcon className="h-4 w-4" />
-              <span>Available Balance</span>
+            <div className="pointer-events-none absolute -right-8 -top-8 h-28 w-28 rounded-full bg-white/15 blur-xl" />
+            <div className="pointer-events-none absolute -bottom-10 right-10 h-24 w-24 rounded-full bg-white/10 blur-lg" />
+
+            <div className="flex items-start justify-between">
+              <div>
+                <div className="flex items-center gap-2 text-sm font-semibold text-white/85">
+                  <WalletIcon className="h-4 w-4" />
+                  <span>Available Balance</span>
+                </div>
+                <div className="mt-2 text-4xl font-extrabold tracking-tight">{money(wallet.balance)}</div>
+              </div>
+              <Logo size="md" className="bg-white/25 ring-white/30" />
             </div>
-            <div className="mt-2 text-4xl font-extrabold tracking-tight">{money(wallet.balance)}</div>
-            <div className="mt-4 text-xs text-white/70">Verified & secured by organization portal</div>
+
+            <div className="mt-5 text-xs text-white/60">Verified &amp; secured by organization portal</div>
           </Card>
 
           {/* Card 2: Recharge form */}
-          <Card className="p-6 shadow-card">
-            <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
-              <PlusCircle className="h-4.5 w-4.5 text-brand" />
-              <h2 className="font-semibold text-slate-800">Recharge (Test Mode)</h2>
+          <Card className="p-6">
+            <div className="flex items-center gap-2 border-b border-white/60 pb-3">
+              <PlusCircle className="h-4 w-4 text-brand" />
+              <h2 className="font-bold text-ink-800">Recharge (Test Mode)</h2>
             </div>
-            
+
             <form onSubmit={recharge} className="mt-4 space-y-4">
               <Input
                 label="Amount (₹)"
@@ -94,14 +94,19 @@ export default function Wallet() {
                 onChange={(e) => setAmount(e.target.value)}
                 placeholder="Enter amount to add"
               />
-              
+
               <div className="flex flex-wrap gap-2">
                 {[100, 200, 500, 1000].map((v) => (
                   <button
                     key={v}
                     type="button"
                     onClick={() => setAmount(String(v))}
-                    className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-100 active:scale-95"
+                    className={[
+                      'rounded-xl px-3.5 py-1.5 text-xs font-bold transition-all duration-200 active:scale-95',
+                      String(v) === amount
+                        ? 'bg-gradient-to-br from-brand to-brand-dark text-white shadow-glow ring-1 ring-white/25'
+                        : 'glass-input text-ink-600 hover:text-brand-dark',
+                    ].join(' ')}
                   >
                     +{v}
                   </button>
@@ -110,7 +115,7 @@ export default function Wallet() {
 
               {error && <Alert variant="error">{error}</Alert>}
 
-              <Button type="submit" disabled={busy} className="w-full">
+              <Button type="submit" disabled={busy} size="lg" className="w-full">
                 {busy ? 'Processing…' : 'Add money'}
               </Button>
             </form>
@@ -119,42 +124,59 @@ export default function Wallet() {
 
         {/* Right Column: Transactions (takes 7/12) */}
         <div className="lg:col-span-7">
-          
+
           {/* Card 3: Recent Transactions */}
-          <Card className="flex h-full flex-col p-6 shadow-card">
-            <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
-              <History className="h-4.5 w-4.5 text-slate-400" />
-              <h2 className="font-semibold text-slate-800">Recent Transactions</h2>
+          <Card className="flex h-full flex-col p-6">
+            <div className="flex items-center justify-between border-b border-white/60 pb-3">
+              <div className="flex items-center gap-2">
+                <History className="h-4 w-4 text-brand" />
+                <h2 className="font-bold text-ink-800">Transaction History</h2>
+              </div>
+              {pager.total > 0 && (
+                <span className="rounded-lg bg-brand/10 px-2.5 py-1 text-xs font-bold text-brand-dark ring-1 ring-brand/20">
+                  {pager.total}
+                </span>
+              )}
             </div>
 
-            <div className="flex-1 mt-4">
-              {wallet.transactions.length === 0 ? (
+            <div className="mt-4 flex-1">
+              {pager.total === 0 ? (
                 <Empty icon={History} title="No transactions yet" hint="Your financial logs will appear here." />
               ) : (
-                <div className="divide-y divide-slate-100">
-                  {wallet.transactions.map((t) => {
-                    const isDebit = t.transaction_type === 'RIDE_PAYMENT';
-                    return (
-                      <div key={t.transaction_id} className="flex items-center justify-between py-3.5 first:pt-0 last:pb-0">
-                        <div className="flex items-center gap-3">
-                          <div className={`flex h-9 w-9 items-center justify-center rounded-xl ${isDebit ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600'}`}>
-                            {isDebit ? <ArrowDownLeft className="h-4.5 w-4.5" /> : <ArrowUpRight className="h-4.5 w-4.5" />}
+                <div className="space-y-4">
+                  <div className="divide-y divide-white/60">
+                    {pager.items.map((t) => {
+                      const isDebit = t.transaction_type === 'RIDE_PAYMENT';
+                      return (
+                        <div key={t.transaction_id} className="flex items-center justify-between py-3.5 first:pt-0">
+                          <div className="flex items-center gap-3">
+                            <div
+                              className={`flex h-10 w-10 items-center justify-center rounded-xl ring-1 ${
+                                isDebit
+                                  ? 'bg-rose-50/80 text-rose-600 ring-rose-200/70'
+                                  : 'bg-brand/10 text-brand ring-brand/20'
+                              }`}
+                            >
+                              {isDebit ? <ArrowDownLeft className="h-4 w-4" /> : <ArrowUpRight className="h-4 w-4" />}
+                            </div>
+                            <div>
+                              <div className="text-sm font-bold capitalize text-ink-800">
+                                {t.transaction_type.toLowerCase().replace(/_/g, ' ')}
+                              </div>
+                              <div className="text-[11px] text-ink-400">
+                                {new Date(t.created_at).toLocaleString()}
+                              </div>
+                            </div>
                           </div>
-                          <div>
-                            <div className="text-sm font-semibold text-slate-800 capitalize">
-                              {t.transaction_type.toLowerCase().replace('_', ' ')}
-                            </div>
-                            <div className="text-[11px] text-slate-400">
-                              {new Date(t.created_at).toLocaleString()}
-                            </div>
+                          <div className={`text-sm font-extrabold ${isDebit ? 'text-rose-600' : 'text-brand-dark'}`}>
+                            {isDebit ? '-' : '+'}{money(t.amount)}
                           </div>
                         </div>
-                        <div className={`text-sm font-bold ${isDebit ? 'text-rose-600' : 'text-emerald-600'}`}>
-                          {isDebit ? '-' : '+'}{money(t.amount)}
-                        </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
+
+                  <Pagination {...pager} label="transactions" compact />
                 </div>
               )}
             </div>

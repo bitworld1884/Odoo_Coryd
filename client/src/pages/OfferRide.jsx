@@ -4,7 +4,7 @@ import { Car, CalendarDays, Users, RefreshCw, Navigation, Route, Info } from 'lu
 import api, { apiError } from '../api.js';
 import AddressInput from '../components/AddressInput.jsx';
 import MapView from '../components/MapView.jsx';
-import { Button, Card, Input, Select, Empty, Alert, money } from '../components/ui.jsx';
+import { Button, Card, Input, Select, Empty, Alert, Spinner, PageTitle } from '../components/ui.jsx';
 
 const WEEKDAY_OPTIONS = [
   { label: 'Mon', value: 'MON' },
@@ -19,8 +19,8 @@ const WEEKDAY_OPTIONS = [
 function SectionLabel({ icon: Icon, label }) {
   return (
     <div className="flex items-center gap-2 pb-1">
-      <Icon className="h-4 w-4 text-brand" strokeWidth={1.75} />
-      <span className="text-[11px] font-bold uppercase tracking-widest text-slate-400">{label}</span>
+      <Icon className="h-4 w-4 text-brand" strokeWidth={1.9} />
+      <span className="text-[11px] font-bold uppercase tracking-widest text-ink-500">{label}</span>
     </div>
   );
 }
@@ -84,22 +84,16 @@ export default function OfferRide() {
 
   if (vehicles === null) {
     return (
-      <div className="flex items-center justify-center p-12">
-        <div className="flex items-center gap-3 text-slate-400">
-          <svg className="h-5 w-5 animate-spin text-brand" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-20" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
-            <path className="opacity-80" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-          </svg>
-          <span className="text-sm font-medium">Loading vehicles…</span>
-        </div>
-      </div>
+      <Spinner label="Loading vehicles…" />
     );
   }
 
   if (vehicles.length === 0) {
     return (
       <div className="space-y-5">
-        <h1 className="text-2xl font-bold text-slate-900">Offer a Ride</h1>
+        <PageTitle icon={Car} subtitle="Share your route — fare is calculated automatically.">
+          Offer a Ride
+        </PageTitle>
         <Empty
           icon={Car}
           title="No vehicles registered"
@@ -115,12 +109,11 @@ export default function OfferRide() {
 
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Offer a Ride</h1>
-        <p className="mt-1 text-sm text-slate-500">Share your route — fare is calculated automatically.</p>
-      </div>
+      <PageTitle icon={Car} subtitle="Share your route — fare is calculated automatically.">
+        Offer a Ride
+      </PageTitle>
 
-      <Card className="divide-y divide-slate-100">
+      <Card className="divide-y divide-white/60">
 
         {/* Vehicle */}
         <div className="space-y-3 p-5">
@@ -174,16 +167,16 @@ export default function OfferRide() {
           <label className="inline-flex cursor-pointer items-center gap-3">
             <div
               onClick={() => setForm({ ...form, isRecurring: !form.isRecurring, selectedDays: !form.isRecurring ? form.selectedDays : [] })}
-              className={`relative h-5 w-9 rounded-full transition-colors duration-200 ${form.isRecurring ? 'bg-brand' : 'bg-slate-200'}`}
+              className={`relative h-5 w-9 rounded-full transition-colors duration-200 ${form.isRecurring ? 'bg-gradient-to-r from-brand to-brand-dark shadow-glow' : 'bg-ink-200'}`}
             >
               <div className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform duration-200 ${form.isRecurring ? 'translate-x-4' : 'translate-x-0.5'}`} />
             </div>
-            <span className="text-sm font-medium text-slate-700">Recurring ride</span>
+            <span className="text-sm font-semibold text-ink-700">Recurring ride</span>
           </label>
 
           {form.isRecurring && (
             <div className="space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Allowed weekdays</p>
+              <p className="text-xs font-bold uppercase tracking-wider text-ink-400">Allowed weekdays</p>
               <div className="flex flex-wrap gap-2">
                 {WEEKDAY_OPTIONS.map((day) => {
                   const active = form.selectedDays.includes(day.value);
@@ -198,10 +191,10 @@ export default function OfferRide() {
                         setForm({ ...form, selectedDays });
                       }}
                       className={[
-                        'rounded-lg border px-3 py-1.5 text-xs font-semibold transition-all duration-150 active:scale-95',
+                        'rounded-xl px-3.5 py-1.5 text-xs font-bold transition-all duration-200 active:scale-95',
                         active
-                          ? 'border-brand bg-brand text-white shadow-sm'
-                          : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50',
+                          ? 'bg-gradient-to-br from-brand to-brand-dark text-white shadow-glow ring-1 ring-white/25'
+                          : 'glass-input text-ink-600 hover:text-brand-dark',
                       ].join(' ')}
                     >
                       {day.label}
@@ -214,8 +207,8 @@ export default function OfferRide() {
         </div>
 
         {/* Fare info */}
-        <div className="flex items-start gap-3 bg-brand-subtle px-5 py-3.5 text-sm text-brand-dark">
-          <Info className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={1.75} />
+        <div className="flex items-start gap-3 bg-brand/[0.08] px-5 py-3.5 text-sm font-medium text-brand-dark">
+          <Info className="mt-0.5 h-4 w-4 shrink-0 text-brand" strokeWidth={1.9} />
           <span>Fare per seat is calculated automatically from the admin-set rate × your route distance.</span>
         </div>
 
@@ -234,11 +227,11 @@ export default function OfferRide() {
       {/* Route preview */}
       {route && (
         <Card className="overflow-hidden">
-          <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
-            <span className="text-sm font-semibold text-slate-800">Route preview</span>
-            <div className="flex items-center gap-3 text-xs text-slate-500">
-              <span className="rounded-full bg-slate-100 px-2.5 py-1 font-medium">{route.distanceKm} km</span>
-              <span className="rounded-full bg-slate-100 px-2.5 py-1 font-medium">~{route.durationMinutes} min</span>
+          <div className="flex items-center justify-between border-b border-white/60 px-5 py-3">
+            <span className="text-sm font-bold text-ink-800">Route preview</span>
+            <div className="flex items-center gap-2 text-xs">
+              <span className="rounded-lg bg-brand/10 px-2.5 py-1 font-bold text-brand-dark ring-1 ring-brand/20">{route.distanceKm} km</span>
+              <span className="rounded-lg bg-ink-100/70 px-2.5 py-1 font-bold text-ink-600 ring-1 ring-ink-200/70">~{route.durationMinutes} min</span>
             </div>
           </div>
           <MapView pickup={pickup} destination={dest} routeGeometry={route.geometry} height={300} follow={false} />

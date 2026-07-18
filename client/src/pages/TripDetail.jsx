@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Clock, CheckCircle, Banknote, Smartphone, Wallet2, Phone } from 'lucide-react';
+import { Clock, CircleCheck, Banknote, Smartphone, WalletMinimal, Phone, ArrowLeft, Route, QrCode } from 'lucide-react';
 import api, { apiError } from '../api.js';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { getSocket } from '../socket.js';
@@ -9,7 +9,7 @@ import RazorpayButton from '../components/RazorpayButton.jsx';
 import RazorpayQR from '../components/RazorpayQR.jsx';
 import AudioCallOverlay from '../components/AudioCallOverlay.jsx';
 import { useWebRTC } from '../hooks/useWebRTC.js';
-import { Button, Card, Badge, money } from '../components/ui.jsx';
+import { Button, Card, Badge, Spinner, Alert, money } from '../components/ui.jsx';
 
 const NEXT       = { BOOKED: 'STARTED', STARTED: 'IN_PROGRESS', IN_PROGRESS: 'COMPLETED' };
 const NEXT_LABEL = { BOOKED: 'Start trip', STARTED: 'Begin journey', IN_PROGRESS: 'Complete trip' };
@@ -218,7 +218,7 @@ export default function TripDetail() {
     finally { setBusy(false); }
   };
 
-  if (!trip) return <div className="p-8 text-slate-500">{error || 'Loading…'}</div>;
+  if (!trip) return <Spinner label={error || 'Loading trip…'} />;
 
   const peer    = iAmDriver
     ? { name: trip.passenger_name, phone: trip.passenger_phone, role: 'Passenger' }
@@ -236,7 +236,12 @@ export default function TripDetail() {
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
-        <Link to="/app/trips" className="text-sm text-slate-500 hover:text-slate-700">← Back to trips</Link>
+        <Link
+          to="/app/trips"
+          className="glass inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-sm font-semibold text-ink-600 transition hover:text-brand-dark"
+        >
+          <ArrowLeft className="h-4 w-4" /> Back to trips
+        </Link>
         <Badge status={trip.status} />
       </div>
 
@@ -248,15 +253,15 @@ export default function TripDetail() {
           <Card className="overflow-hidden">
             <div className="flex items-center justify-between px-5 py-3 text-sm">
               <div className="flex items-center gap-2">
-                <span className="font-semibold text-slate-700">Live tracking</span>
+                <span className="font-bold text-ink-800">Live tracking</span>
                 {isLive && (
-                  <span className="flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  <span className="flex items-center gap-1.5 rounded-lg bg-brand/12 px-2 py-0.5 text-[11px] font-bold text-brand-dark ring-1 ring-brand/25">
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-brand" />
                     LIVE
                   </span>
                 )}
               </div>
-              <span className="text-xs text-slate-500">{trackingLabel}</span>
+              <span className="text-xs font-medium text-ink-500">{trackingLabel}</span>
             </div>
             <MapView
               pickup={{ lat: +trip.pickup_lat, lng: +trip.pickup_lng, address: trip.pickup_address }}
@@ -272,15 +277,17 @@ export default function TripDetail() {
 
           {/* ETA banner when live */}
           {isLive && eta && (
-            <div className="flex items-center gap-3 rounded-xl bg-teal-50 px-4 py-3 text-sm">
-              <Clock className="h-6 w-6 shrink-0 text-teal-500" />
+            <div className="glass flex flex-wrap items-center gap-3 px-4 py-3 text-sm">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand/12 text-brand ring-1 ring-brand/20">
+                <Clock className="h-5 w-5" />
+              </span>
               <div>
-                <div className="font-semibold text-teal-800">
+                <div className="font-bold text-ink-800">
                   ~{eta.minutes} min estimated arrival
                 </div>
-                <div className="text-xs text-teal-600">{eta.distKm} km remaining to destination</div>
+                <div className="text-xs text-ink-500">{eta.distKm} km remaining to destination</div>
               </div>
-              <div className="ml-auto text-xs text-teal-500">
+              <div className="ml-auto font-mono text-[11px] text-ink-400">
                 {vehiclePos ? `Car at ${vehiclePos.lat.toFixed(4)}, ${vehiclePos.lng.toFixed(4)}` : ''}
               </div>
             </div>
@@ -288,8 +295,8 @@ export default function TripDetail() {
 
           {/* Trip details */}
           <Card className="p-5">
-            <h2 className="mb-3 font-semibold text-slate-700">Trip details</h2>
-            <div className="grid grid-cols-2 gap-y-2 text-sm">
+            <h2 className="mb-4 flex items-center gap-2 border-b border-white/60 pb-3 font-bold text-ink-800"><Route className="h-4 w-4 text-brand" /> Trip details</h2>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
               <Info label="Driver"    value={trip.driver_name} />
               <Info label="Passenger" value={trip.passenger_name} />
               <Info label="Vehicle"   value={`${trip.vehicle_model} (${trip.registration_number})`} />
@@ -308,26 +315,26 @@ export default function TripDetail() {
               </div>
             )}
             {!iAmDriver && trip.status === 'BOOKED' && (
-              <p className="mt-4 text-sm text-slate-400">Waiting for the driver to start the trip.</p>
+              <p className="mt-4 rounded-xl bg-brand/[0.08] px-3.5 py-2.5 text-sm font-medium text-brand-dark">
+                Waiting for the driver to start the trip.
+              </p>
             )}
-            {error && (
-              <p className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-600">{error}</p>
-            )}
+            {error && <div className="mt-3"><Alert variant="error">{error}</Alert></div>}
           </Card>
 
           {/* Payment */}
           {(showPay || payment?.status === 'COMPLETED') && (
             <Card className="p-5">
-              <h2 className="mb-3 font-semibold text-slate-700">Payment</h2>
+              <h2 className="mb-4 flex items-center gap-2 border-b border-white/60 pb-3 font-bold text-ink-800"><Banknote className="h-4 w-4 text-brand" /> Payment</h2>
               {payment.status === 'COMPLETED' ? (
-                <div className="flex items-center gap-3 rounded-xl bg-emerald-50 px-4 py-3">
-                  <CheckCircle className="h-6 w-6 shrink-0 text-emerald-500" strokeWidth={1.75} />
+                <div className="flex items-center gap-3 rounded-xl bg-emerald-50/80 px-4 py-3 ring-1 ring-emerald-200/70">
+                  <CircleCheck className="h-6 w-6 shrink-0 text-emerald-500" strokeWidth={1.9} />
                   <div>
-                    <p className="font-semibold text-emerald-700">
+                    <p className="font-bold text-emerald-700">
                       Paid {money(payment.amount)} via {payment.payment_method}
                     </p>
                     {payment.payment_gateway_ref && (
-                      <p className="text-xs text-emerald-600 mt-0.5">
+                      <p className="mt-0.5 font-mono text-xs text-emerald-600">
                         Ref: {payment.payment_gateway_ref}
                       </p>
                     )}
@@ -335,9 +342,9 @@ export default function TripDetail() {
                 </div>
               ) : (
                 <>
-                  <div className="mb-4 flex items-center justify-between rounded-xl bg-slate-50 px-4 py-3">
-                    <span className="text-sm text-slate-600">Amount due</span>
-                    <span className="text-xl font-bold text-brand-dark">{money(payment.amount)}</span>
+                  <div className="mb-4 flex items-center justify-between rounded-xl bg-brand/[0.08] px-4 py-3 ring-1 ring-brand/15">
+                    <span className="text-sm font-semibold text-ink-600">Amount due</span>
+                    <span className="text-xl font-extrabold text-brand-dark">{money(payment.amount)}</span>
                   </div>
 
                   {/* ── Primary: Razorpay checkout + QR ── */}
@@ -352,19 +359,19 @@ export default function TripDetail() {
                     <button
                       onClick={() => setShowQR(true)}
                       disabled={busy}
-                      className="flex items-center gap-2 rounded-xl border-2 border-teal-400 bg-teal-50 px-4 py-2.5 text-sm font-semibold text-teal-700 hover:bg-teal-100 transition disabled:opacity-50"
+                      className="flex items-center gap-2 rounded-xl border border-brand/30 bg-brand/10 px-4 py-2.5 text-sm font-bold text-brand-dark backdrop-blur-sm transition hover:bg-brand/20 active:scale-95 disabled:opacity-50"
                     >
-                      <span className="text-lg">⊞</span> Show QR Code
+                      <QrCode className="h-4 w-4" /> Show QR Code
                     </button>
                   </div>
 
                   {/* ── Divider ── */}
                   <div className="relative my-4">
                     <div className="absolute inset-0 flex items-center">
-                      <div className="w-full border-t border-slate-200" />
+                      <div className="w-full border-t border-white/70" />
                     </div>
-                    <div className="relative flex justify-center text-xs text-slate-400">
-                      <span className="bg-white px-2">or pay manually</span>
+                    <div className="relative flex justify-center text-xs font-semibold text-ink-400">
+                      <span className="rounded-full bg-white/70 px-3 py-0.5 backdrop-blur-sm">or pay manually</span>
                     </div>
                   </div>
 
@@ -372,7 +379,7 @@ export default function TripDetail() {
                   <div className="flex flex-wrap gap-2">
                     {['CASH', 'UPI', 'WALLET'].map((m) => (
                       <Button key={m} variant="outline" onClick={() => pay(m)} disabled={busy}>
-                        {m === 'CASH' ? <Banknote className="h-4 w-4" /> : m === 'UPI' ? <Smartphone className="h-4 w-4" /> : <Wallet2 className="h-4 w-4" />}{' '}{m}
+                        {m === 'CASH' ? <Banknote className="h-4 w-4" /> : m === 'UPI' ? <Smartphone className="h-4 w-4" /> : <WalletMinimal className="h-4 w-4" />}{' '}{m}
                       </Button>
                     ))}
                   </div>
@@ -385,11 +392,11 @@ export default function TripDetail() {
         {/* ── Right: chat + call ── */}
         <div className="space-y-5">
           <Card className="flex h-[520px] flex-col">
-            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+            <div className="flex items-center justify-between border-b border-white/60 px-4 py-3">
               <div>
-                <div className="text-sm font-semibold text-slate-700">{peer.name}</div>
-                <div className="flex items-center gap-1.5 text-xs text-slate-400">
-                  {peerOnline && <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />}
+                <div className="text-sm font-bold text-ink-800">{peer.name}</div>
+                <div className="flex items-center gap-1.5 text-xs text-ink-400">
+                  {peerOnline && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-brand" />}
                   {peer.role} · {peerOnline ? 'online' : 'offline'}
                 </div>
               </div>
@@ -417,29 +424,28 @@ export default function TripDetail() {
               )}
             </div>
 
-
-
-
             <div className="flex-1 space-y-2 overflow-y-auto p-4">
               {messages.length === 0 && (
-                <p className="text-center text-xs text-slate-400">No messages yet. Start the conversation.</p>
+                <p className="pt-6 text-center text-xs text-ink-400">No messages yet. Start the conversation.</p>
               )}
               {messages.map((m) => {
                 const mine = m.sender_employee_id === user.employeeId;
                 if (m.message_type === 'CALL_LOG') {
                   return (
-                    <div key={m.message_id} className="text-center text-[11px] text-slate-400">
+                    <div key={m.message_id} className="text-center text-[11px] text-ink-400">
                       — {m.message_text} —
                     </div>
                   );
                 }
                 return (
                   <div key={m.message_id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[75%] rounded-2xl px-3 py-2 text-sm ${
-                      mine ? 'bg-brand text-white' : 'bg-slate-100 text-slate-700'
+                    <div className={`max-w-[75%] rounded-2xl px-3.5 py-2 text-sm shadow-sm ${
+                      mine
+                        ? 'bg-gradient-to-br from-brand to-brand-dark text-white ring-1 ring-white/20'
+                        : 'border border-white/60 bg-white/70 text-ink-700 backdrop-blur-sm'
                     }`}>
                       {m.message_text}
-                      <div className={`mt-0.5 text-[10px] ${mine ? 'text-white/70' : 'text-slate-400'}`}>
+                      <div className={`mt-0.5 text-[10px] ${mine ? 'text-white/70' : 'text-ink-400'}`}>
                         {new Date(m.sent_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </div>
                     </div>
@@ -449,12 +455,12 @@ export default function TripDetail() {
               <div ref={chatEnd} />
             </div>
 
-            <form onSubmit={send} className="flex gap-2 border-t border-slate-100 p-3">
+            <form onSubmit={send} className="flex gap-2 border-t border-white/60 p-3">
               <input
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 placeholder="Type a message…"
-                className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-brand"
+                className="glass-input flex-1 rounded-xl px-3.5 py-2 text-sm text-ink-800 placeholder:text-ink-400 outline-none transition-all"
               />
               <Button type="submit">Send</Button>
             </form>
@@ -494,9 +500,9 @@ export default function TripDetail() {
 
 function Info({ label, value }) {
   return (
-    <div className="pr-3">
-      <div className="text-[11px] uppercase tracking-wide text-slate-400">{label}</div>
-      <div className="text-slate-700">{value}</div>
+    <div className="min-w-0 pr-3">
+      <div className="text-[10px] font-bold uppercase tracking-wider text-ink-400">{label}</div>
+      <div className="mt-0.5 truncate font-semibold text-ink-700" title={value}>{value}</div>
     </div>
   );
 }

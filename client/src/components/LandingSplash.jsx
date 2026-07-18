@@ -1,8 +1,19 @@
+import { LOGO_SRC } from './Brand.jsx';
+
 export default function LandingSplash() {
   return (
     <div className="cpL-splash">
       <style>{cssL}</style>
-      <div className="cpL-brand">🚗 CoRYD</div>
+
+      {/* Ambient glass orbs */}
+      <div className="cpL-orb cpL-o1" />
+      <div className="cpL-orb cpL-o2" />
+      <div className="cpL-orb cpL-o3" />
+
+      <div className="cpL-brand">
+        <img src={LOGO_SRC} alt="" className="cpL-brandMark" />
+        <span>Co<b>RYD</b></span>
+      </div>
 
       <div className="cpL-scene">
         <div className="cpL-cloud cpL-c1" />
@@ -12,7 +23,7 @@ export default function LandingSplash() {
 
         <div className="cpL-car">
           <div className="cpL-carInner">
-            <Car />
+            <img src={LOGO_SRC} alt="CoRYD" className="cpL-logo" />
           </div>
         </div>
       </div>
@@ -25,55 +36,78 @@ export default function LandingSplash() {
   );
 }
 
-function Car() {
-  return (
-    <svg viewBox="0 0 260 180" width="230" height="160" aria-hidden="true">
-      <ellipse cx="52" cy="132" rx="26" ry="10" fill="#fde68a" opacity="0.5" />
-      <ellipse cx="208" cy="132" rx="26" ry="10" fill="#fde68a" opacity="0.5" />
-      <path d="M62 104 L86 52 Q90 46 98 46 L162 46 Q170 46 174 52 L198 104 Z" fill="#0f766e" />
-      <path d="M78 100 L96 62 Q98 58 104 58 L156 58 Q162 58 164 62 L182 100 Z" fill="#cdeee8" />
-      <g fill="#0f172a">
-        <circle cx="103" cy="80" r="11" /><path d="M90 100 a13 13 0 0 1 26 0 Z" />
-        <circle cx="130" cy="76" r="11" /><path d="M117 98 a13 13 0 0 1 26 0 Z" />
-        <circle cx="157" cy="80" r="11" /><path d="M144 100 a13 13 0 0 1 26 0 Z" />
-      </g>
-      <rect x="26" y="100" width="208" height="60" rx="26" fill="#0d9488" />
-      <rect x="34" y="146" width="192" height="14" rx="7" fill="#0b5f58" />
-      <rect x="40" y="118" width="30" height="16" rx="8" fill="#fef3c7" />
-      <rect x="190" y="118" width="30" height="16" rx="8" fill="#fef3c7" />
-      <rect x="118" y="120" width="24" height="10" rx="5" fill="#0b5f58" />
-      <rect x="44" y="152" width="40" height="20" rx="10" fill="#1f2937" />
-      <rect x="176" y="152" width="40" height="20" rx="10" fill="#1f2937" />
-    </svg>
-  );
-}
-
 const cssL = `
 .cpL-splash{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
-  background:linear-gradient(180deg,#e6fffb,#f0fdfa 45%,#fff);overflow:hidden;z-index:50;
-  font-family:ui-sans-serif,system-ui,-apple-system,sans-serif;}
-.cpL-brand{position:absolute;top:28px;font-size:22px;font-weight:800;color:#0f766e;opacity:0;animation:cpL-fade .6s ease .2s forwards;}
+  background:
+    radial-gradient(at 12% 8%,  rgba(167,139,250,.45) 0px, transparent 55%),
+    radial-gradient(at 88% 6%,  rgba(196,181,253,.40) 0px, transparent 50%),
+    radial-gradient(at 78% 84%, rgba(139,92,246,.32)  0px, transparent 52%),
+    radial-gradient(at 18% 92%, rgba(148,163,184,.34) 0px, transparent 50%),
+    #eeecf5;
+  overflow:hidden;z-index:50;font-family:Inter,ui-sans-serif,system-ui,-apple-system,sans-serif;}
+
+/* ── floating glass orbs ── */
+.cpL-orb{position:absolute;border-radius:50%;filter:blur(42px);pointer-events:none;}
+.cpL-o1{width:300px;height:300px;background:rgba(124,58,237,.30);top:-70px;left:-60px;animation:cpL-float 15s ease-in-out infinite;}
+.cpL-o2{width:250px;height:250px;background:rgba(148,163,184,.34);bottom:-60px;right:-40px;animation:cpL-float 19s ease-in-out infinite reverse;}
+.cpL-o3{width:200px;height:200px;background:rgba(196,181,253,.36);top:52%;left:8%;animation:cpL-float 23s ease-in-out infinite -5s;}
+@keyframes cpL-float{0%,100%{transform:translate3d(0,0,0) scale(1);}50%{transform:translate3d(26px,-32px,0) scale(1.12);}}
+
+/* ── brand lockup (glass pill) ── */
+.cpL-brand{position:absolute;top:26px;display:flex;align-items:center;gap:10px;
+  padding:8px 18px 8px 10px;border-radius:999px;
+  background:rgba(255,255,255,.55);backdrop-filter:blur(17px);-webkit-backdrop-filter:blur(17px);
+  border:1px solid rgba(255,255,255,.6);
+  box-shadow:0 8px 32px rgba(59,7,100,.12),inset 0 1px 0 rgba(255,255,255,.8);
+  font-size:19px;font-weight:800;letter-spacing:-.01em;color:#2c2c3b;
+  opacity:0;animation:cpL-fade .7s ease .2s forwards;}
+.cpL-brandMark{width:30px;height:30px;object-fit:contain;}
+.cpL-brand b{background:linear-gradient(90deg,#7c3aed,#5b21b6);-webkit-background-clip:text;background-clip:text;color:transparent;}
+
+/* ── scene ── */
 .cpL-scene{position:relative;width:min(560px,92vw);height:300px;}
 .cpL-road{position:absolute;left:50%;bottom:0;width:170%;height:150px;
   transform:translateX(-50%) perspective(340px) rotateX(60deg);transform-origin:bottom center;
-  background:#475569;overflow:hidden;border-radius:6px;}
+  background:linear-gradient(180deg,#55556c,#414155);overflow:hidden;border-radius:8px;
+  box-shadow:0 -8px 30px rgba(59,7,100,.16);}
 .cpL-lanes{position:absolute;left:calc(50% - 6px);top:-50%;width:12px;height:200%;
-  background:repeating-linear-gradient(to bottom,#f8fafc 0 30px,transparent 30px 70px);animation:cpL-move .5s linear infinite;}
+  background:repeating-linear-gradient(to bottom,#ede9fe 0 30px,transparent 30px 70px);animation:cpL-move .5s linear infinite;}
 @keyframes cpL-move{to{transform:translateY(70px);}}
-.cpL-car{position:absolute;left:50%;bottom:70px;transform:translateX(-140%);animation:cpL-drive 1.5s cubic-bezier(.2,.8,.2,1) forwards;
-  filter:drop-shadow(0 14px 10px rgba(2,6,23,.18));}
-@keyframes cpL-drive{0%{transform:translateX(-160%);}70%{transform:translateX(-42%);}100%{transform:translateX(-50%);}}
-.cpL-carInner{animation:cpL-bob 1.2s ease-in-out 1.5s infinite;}
-@keyframes cpL-bob{0%,100%{transform:translateY(0);}50%{transform:translateY(-5px);}}
-.cpL-cloud{position:absolute;background:#fff;border-radius:999px;opacity:.9;box-shadow:26px 8px 0 -4px #fff,-26px 8px 0 -6px #fff;}
+
+/* ── logo "vehicle" ── */
+.cpL-car{position:absolute;left:50%;bottom:64px;transform:translateX(-140%);
+  animation:cpL-drive 1.5s cubic-bezier(.2,.8,.2,1) forwards;
+  filter:drop-shadow(0 18px 16px rgba(59,7,100,.26));}
+@keyframes cpL-drive{0%{transform:translateX(-170%);}70%{transform:translateX(-42%);}100%{transform:translateX(-50%);}}
+.cpL-carInner{animation:cpL-bob 1.3s ease-in-out 1.5s infinite;
+  padding:14px 20px;border-radius:26px;
+  background:rgba(255,255,255,.42);backdrop-filter:blur(17px);-webkit-backdrop-filter:blur(17px);
+  border:1px solid rgba(255,255,255,.6);
+  box-shadow:0 8px 32px rgba(59,7,100,.14),inset 0 1px 0 rgba(255,255,255,.85),inset 0 -1px 0 rgba(255,255,255,.15);}
+@keyframes cpL-bob{0%,100%{transform:translateY(0);}50%{transform:translateY(-6px);}}
+.cpL-logo{width:210px;max-width:52vw;height:auto;display:block;}
+
+/* ── clouds ── */
+.cpL-cloud{position:absolute;background:rgba(255,255,255,.85);border-radius:999px;
+  box-shadow:26px 8px 0 -4px rgba(255,255,255,.85),-26px 8px 0 -6px rgba(255,255,255,.85);}
 .cpL-c1{width:70px;height:26px;top:24px;animation:cpL-drift 13s linear infinite;}
 .cpL-c2{width:52px;height:20px;top:70px;animation:cpL-drift 18s linear infinite -6s;}
 .cpL-c3{width:60px;height:22px;top:14px;animation:cpL-drift 22s linear infinite -12s;}
 @keyframes cpL-drift{from{right:-90px;}to{right:110%;}}
-.cpL-title{margin:18px 0 0;text-align:center;font-size:30px;font-weight:800;color:#134e4a;line-height:1.2;display:flex;flex-direction:column;}
-.cpL-line{opacity:0;transform:translateY(18px);animation:cpL-rise .6s ease forwards;}
-.cpL-l1{animation-delay:1.5s;} .cpL-l2{animation-delay:1.8s;}
+
+/* ── title ── */
+.cpL-title{margin:26px 0 0;text-align:center;font-size:32px;font-weight:800;line-height:1.2;
+  display:flex;flex-direction:column;letter-spacing:-.02em;}
+.cpL-line{opacity:0;transform:translateY(18px);animation:cpL-rise .6s cubic-bezier(.16,1,.3,1) forwards;}
+.cpL-l1{animation-delay:1.5s;color:#2c2c3b;}
+.cpL-l2{animation-delay:1.8s;background:linear-gradient(90deg,#7c3aed,#5b21b6);
+  -webkit-background-clip:text;background-clip:text;color:transparent;}
 @keyframes cpL-rise{to{opacity:1;transform:translateY(0);}}
 @keyframes cpL-fade{to{opacity:1;}}
-@media (prefers-reduced-motion:reduce){.cpL-car,.cpL-carInner,.cpL-lanes,.cpL-cloud,.cpL-line,.cpL-brand{animation:none;opacity:1;transform:none;}}
+
+@media (max-width:640px){.cpL-title{font-size:26px;}.cpL-scene{height:250px;}}
+@media (prefers-reduced-motion:reduce){
+  .cpL-car,.cpL-carInner,.cpL-lanes,.cpL-cloud,.cpL-line,.cpL-brand,.cpL-orb{animation:none;opacity:1;transform:none;}
+  .cpL-car{transform:translateX(-50%);}
+}
 `;

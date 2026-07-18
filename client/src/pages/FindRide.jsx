@@ -1,10 +1,15 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Map, Search, ClipboardList, MapPin, ArrowRight } from 'lucide-react';
+import { Map, Search, ClipboardList, MapPin, ArrowRight, Armchair, CalendarClock } from 'lucide-react';
 import api, { apiError } from '../api.js';
 import AddressInput from '../components/AddressInput.jsx';
 import MapView from '../components/MapView.jsx';
-import { Button, Card, Input, Badge, Empty, money } from '../components/ui.jsx';
+import {
+  Button, Card, Input, Badge, Empty, Alert, PageTitle,
+  Pagination, usePagination, money,
+} from '../components/ui.jsx';
+
+const PER_PAGE = 5;
 
 export default function FindRide() {
   const navigate = useNavigate();
@@ -20,6 +25,10 @@ export default function FindRide() {
   const [error, setError] = useState('');
   const [bookingId, setBookingId] = useState(null);
   const [myLocation, setMyLocation] = useState(null);
+  const [searchId, setSearchId] = useState(0);   // bumps on each new search → resets pagination
+
+  /* Paginate the result set */
+  const pager = usePagination(rides, PER_PAGE, searchId);
 
   /* Watch user's live GPS position */
   useEffect(() => {
@@ -82,6 +91,17 @@ export default function FindRide() {
         },
       });
       setRides(data.rides);
+      setSearchId((n) => n + 1);
+    } catch (e) { setError(apiError(e)); }
+    finally { setBusy(false); }
+  };
+
+  const browseAll = async () => {
+    setError(''); setBusy(true); setRides(null);
+    try {
+      const { data } = await api.get('/rides', { params: { seats } });
+      setRides(data.rides);
+      setSearchId((n) => n + 1);
     } catch (e) { setError(apiError(e)); }
     finally { setBusy(false); }
   };
@@ -100,7 +120,9 @@ export default function FindRide() {
 
   return (
     <div className="space-y-5">
-      <h1 className="text-2xl font-bold text-slate-800">Find a Ride</h1>
+      <PageTitle icon={Search} subtitle="Search rides published by colleagues on your route.">
+        Find a Ride
+      </PageTitle>
 
       <Card className="space-y-4 p-5">
         <AddressInput
@@ -123,6 +145,7 @@ export default function FindRide() {
             setRoute(null);
           }}
         />
+
         <div className="flex flex-wrap gap-2">
           {[
             { value: 'now', label: 'Pickup now' },
@@ -132,12 +155,18 @@ export default function FindRide() {
               key={option.value}
               type="button"
               onClick={() => setMode(option.value)}
-              className={`rounded-full border px-3 py-1.5 text-sm ${mode === option.value ? 'border-brand-dark bg-brand-dark text-white' : 'border-slate-200 bg-white text-slate-600'}`}
+              className={[
+                'rounded-full px-4 py-1.5 text-sm font-semibold transition-all duration-200 active:scale-95',
+                mode === option.value
+                  ? 'bg-gradient-to-br from-brand to-brand-dark text-white shadow-glow ring-1 ring-white/25'
+                  : 'glass-input text-ink-600 hover:text-brand-dark',
+              ].join(' ')}
             >
               {option.label}
             </button>
           ))}
         </div>
+
         <div className="grid grid-cols-2 gap-4">
           <Input
             label="Travel date"
@@ -145,6 +174,7 @@ export default function FindRide() {
             value={date}
             onChange={(e) => setDate(e.target.value)}
             disabled={mode === 'now'}
+            className={mode === 'now' ? 'opacity-50' : ''}
           />
           <Input
             label="Seats"
@@ -156,37 +186,16 @@ export default function FindRide() {
           />
         </div>
 
-        {error && (
-          <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-600">{error}</p>
-        )}
+        {error && <Alert variant="error">{error}</Alert>}
 
         <div className="flex flex-wrap gap-3">
-          <Button
-            variant="outline"
-            onClick={confirmRoute}
-            disabled={busy || !canSearch}
-          >
+          <Button variant="outline" onClick={confirmRoute} disabled={busy || !canSearch}>
             <Map className="h-4 w-4" /> Confirm route
           </Button>
-          <Button
-            onClick={search}
-            disabled={busy || !canSearch}
-            id="search-rides-btn"
-          >
+          <Button onClick={search} disabled={busy || !canSearch} id="search-rides-btn">
             {busy ? 'Searching…' : <><Search className="h-4 w-4" /> Search</>}
           </Button>
-          <Button
-            variant="ghost"
-            onClick={async () => {
-              setError(''); setBusy(true); setRides(null);
-              try {
-                const { data } = await api.get('/rides', { params: { seats } });
-                setRides(data.rides);
-              } catch (e) { setError(apiError(e)); }
-              finally { setBusy(false); }
-            }}
-            disabled={busy}
-          >
+          <Button variant="ghost" onClick={browseAll} disabled={busy}>
             <ClipboardList className="h-4 w-4" /> Browse all rides
           </Button>
         </div>
@@ -196,18 +205,18 @@ export default function FindRide() {
       {(route || myLocation) && (
         <Card className="overflow-hidden">
           <div className="flex items-center justify-between px-5 py-3 text-sm">
-            <span className="font-semibold text-slate-700">
+            <span className="font-bold text-ink-700">
               {route ? 'Route preview' : 'Your location'}
             </span>
             {route && (
-              <span className="text-slate-500">
+              <span className="rounded-lg bg-brand/10 px-2.5 py-1 text-xs font-semibold text-brand-dark">
                 {route.distanceKm} km · ~{route.durationMinutes} min
                 {route.fallback ? ' (estimated)' : ''}
               </span>
             )}
             {!route && myLocation && (
-              <span className="flex items-center gap-1.5 text-blue-500">
-                <span className="inline-block h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
+              <span className="flex items-center gap-1.5 text-xs font-semibold text-brand">
+                <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-brand" />
                 Live location
               </span>
             )}
@@ -226,48 +235,72 @@ export default function FindRide() {
       {/* Search results */}
       {rides && (
         <div className="space-y-3">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-400">
-            {rides.length} available ride(s)
-          </h2>
-          {rides.length === 0 && (
-            <Empty title="No matching rides" hint="Try widening your date or search area." />
+          <div className="flex items-center justify-between">
+            <h2 className="text-xs font-bold uppercase tracking-widest text-ink-500">
+              {pager.total} available ride{pager.total === 1 ? '' : 's'}
+            </h2>
+          </div>
+
+          {pager.total === 0 ? (
+            <Empty
+              icon={Search}
+              title="No matching rides"
+              hint="Try widening your date or search area, or browse all rides."
+            />
+          ) : (
+            <>
+              {/* Top pager */}
+              <Pagination {...pager} label="rides" />
+
+              {pager.items.map((r) => (
+                <Card key={r.ride_id} className="p-4" hover>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-bold text-ink-800">{r.driver_name}</span>
+                        <Badge status={r.status} />
+                      </div>
+
+                      {/* Route: pickup → destination in one line */}
+                      <div className="mt-2 flex min-w-0 items-center gap-1.5 overflow-hidden text-sm text-ink-600">
+                        <MapPin className="h-3.5 w-3.5 shrink-0 text-brand" />
+                        <span className="min-w-0 flex-1 truncate">{r.pickup_address}</span>
+                        <ArrowRight className="h-3.5 w-3.5 shrink-0 text-ink-400" />
+                        <MapPin className="h-3.5 w-3.5 shrink-0 text-brand-dark" />
+                        <span className="min-w-0 flex-1 truncate">{r.destination_address}</span>
+                      </div>
+
+                      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-ink-400">
+                        <span className="inline-flex items-center gap-1">
+                          <CalendarClock className="h-3 w-3" /> {new Date(r.departure_datetime).toLocaleString()}
+                        </span>
+                        <span>{r.vehicle_model} ({r.registration_number})</span>
+                        <span className="inline-flex items-center gap-1">
+                          <Armchair className="h-3 w-3" /> {r.available_seats} seat(s) left
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="text-right">
+                      <div className="text-lg font-extrabold text-brand-dark">{money(r.fare_per_seat)}</div>
+                      <div className="text-xs text-ink-400">per seat</div>
+                      <Button
+                        className="mt-2"
+                        size="sm"
+                        onClick={() => book(r.ride_id)}
+                        disabled={bookingId === r.ride_id}
+                      >
+                        {bookingId === r.ride_id ? 'Booking…' : 'Book'}
+                      </Button>
+                    </div>
+                  </div>
+                </Card>
+              ))}
+
+              {/* Bottom pager */}
+              <Pagination {...pager} label="rides" />
+            </>
           )}
-          {rides.map((r) => (
-            <Card key={r.ride_id} className="p-4 transition hover:shadow-md">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-slate-800">{r.driver_name}</span>
-                    <Badge status={r.status} />
-                  </div>
-                  {/* Route: pickup → destination in one line */}
-                  <div className="mt-1 flex min-w-0 items-center gap-1.5 overflow-hidden text-sm text-slate-600">
-                    <MapPin className="h-3.5 w-3.5 shrink-0 text-brand" />
-                    <span className="flex-1 min-w-0 truncate">{r.pickup_address}</span>
-                    <ArrowRight className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-                    <MapPin className="h-3.5 w-3.5 shrink-0 text-rose-500" />
-                    <span className="flex-1 min-w-0 truncate">{r.destination_address}</span>
-                  </div>
-                  <p className="mt-1 text-xs text-slate-400">
-                    {new Date(r.departure_datetime).toLocaleString()} ·{' '}
-                    {r.vehicle_model} ({r.registration_number}) ·{' '}
-                    {r.available_seats} seat(s) left
-                  </p>
-                </div>
-                <div className="text-right">
-                  <div className="text-lg font-bold text-brand-dark">{money(r.fare_per_seat)}</div>
-                  <div className="text-xs text-slate-400">per seat</div>
-                  <Button
-                    className="mt-2"
-                    onClick={() => book(r.ride_id)}
-                    disabled={bookingId === r.ride_id}
-                  >
-                    {bookingId === r.ride_id ? 'Booking…' : 'Book'}
-                  </Button>
-                </div>
-              </div>
-            </Card>
-          ))}
         </div>
       )}
     </div>

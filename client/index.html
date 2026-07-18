@@ -5,11 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
     <title>CoRYD — Enterprise Ride Sharing</title>
     <meta name="description" content="Enterprise ride sharing for your organization. Find a ride, offer a ride, track trips live, and split the cost." />
+    <meta name="theme-color" content="#7c3aed" />
+    <link rel="icon" type="image/png" href="/logo.png" />
+    <link rel="apple-touch-icon" href="/logo.png" />
 
     <!-- Inter font (Google Fonts) -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
 
     <!-- Leaflet -->
     <link
@@ -29,53 +32,62 @@
               sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
             },
             colors: {
-              brand: { DEFAULT: '#16a34a', dark: '#15803d', light: '#86efac', subtle: '#f0fdf4' },
+              /* ── Purple brand scale ── */
+              brand: {
+                DEFAULT: '#7c3aed',   // violet-600
+                dark:    '#5b21b6',   // violet-800
+                deep:    '#3b0764',   // violet-950
+                mid:     '#8b5cf6',   // violet-500
+                light:   '#c4b5fd',   // violet-300
+                pale:    '#ede9fe',   // violet-100
+                subtle:  '#f5f3ff',   // violet-50
+              },
+              /* ── Neutral grey scale (cool, purple-tinted) ── */
+              ink: {
+                50:  '#f8f8fb',
+                100: '#f0f0f5',
+                200: '#e2e2ec',
+                300: '#c9c9d8',
+                400: '#9a9aae',
+                500: '#71718a',
+                600: '#55556c',
+                700: '#414155',
+                800: '#2c2c3b',
+                900: '#1b1b26',
+              },
             },
             boxShadow: {
-              card:         '0 1px 3px 0 rgb(0 0 0 / 0.06), 0 1px 2px -1px rgb(0 0 0 / 0.06)',
-              'card-hover': '0 4px 12px -2px rgb(0 0 0 / 0.08), 0 2px 4px -2px rgb(0 0 0 / 0.05)',
-              elevated:     '0 10px 25px -5px rgb(0 0 0 / 0.08), 0 4px 10px -5px rgb(0 0 0 / 0.04)',
-              input:        '0 1px 2px 0 rgb(0 0 0 / 0.04)',
+              card:         '0 8px 32px rgba(59, 7, 100, 0.08), 0 1px 2px rgba(59, 7, 100, 0.04)',
+              'card-hover': '0 16px 44px rgba(59, 7, 100, 0.14), 0 2px 6px rgba(59, 7, 100, 0.06)',
+              elevated:     '0 20px 50px -12px rgba(59, 7, 100, 0.22)',
+              input:        '0 1px 2px 0 rgba(59, 7, 100, 0.05)',
+              glow:         '0 6px 20px -4px rgba(124, 58, 237, 0.45)',
             },
             borderRadius: {
               '2xl': '1rem',
               '3xl': '1.25rem',
+            },
+            keyframes: {
+              fadeIn: { '0%': { opacity: 0 }, '100%': { opacity: 1 } },
+              riseIn: {
+                '0%':   { opacity: 0, transform: 'translateY(8px)' },
+                '100%': { opacity: 1, transform: 'translateY(0)' },
+              },
+              floaty: {
+                '0%,100%': { transform: 'translate3d(0,0,0) scale(1)' },
+                '50%':     { transform: 'translate3d(0,-26px,0) scale(1.06)' },
+              },
+            },
+            animation: {
+              fadeIn: 'fadeIn .35s ease-out both',
+              riseIn: 'riseIn .4s cubic-bezier(.16,1,.3,1) both',
             },
           },
         },
       };
     </script>
 
-    <style>
-      /* Base */
-      *, *::before, *::after { box-sizing: border-box; }
-
-      html { scroll-behavior: smooth; }
-
-      body {
-        font-family: 'Inter', system-ui, -apple-system, sans-serif;
-        background-color: #f1f5f9;
-        background-image: radial-gradient(circle, #cbd5e1 1px, transparent 1px);
-        background-size: 24px 24px;
-        -webkit-font-smoothing: antialiased;
-        -moz-osx-font-smoothing: grayscale;
-      }
-
-      /* Leaflet z-index fix */
-      .leaflet-container { z-index: 0; font-family: inherit; }
-
-      /* Custom scrollbar */
-      ::-webkit-scrollbar { width: 6px; height: 6px; }
-      ::-webkit-scrollbar-track { background: transparent; }
-      ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 9999px; }
-      ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-
-      /* Focus ring reset — handled per-component */
-      :focus-visible { outline: none; }
-
-      /* Smooth transitions everywhere */
-      a, button { transition: all 0.15s ease-out; }
-    </style>
+    <!-- Global CSS (glassmorphism + base) lives in src/styles.css, imported by main.jsx -->
   </head>
   <body>
     <div id="root"></div>

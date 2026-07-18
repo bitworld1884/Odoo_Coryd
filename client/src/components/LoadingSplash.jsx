@@ -1,23 +1,17 @@
+import { LOGO_SRC } from './Brand.jsx';
+
 export default function LoadingSplash({ message = 'Loading…' }) {
   return (
     <div className="cpG-splash">
       <style>{cssG}</style>
 
+      <div className="cpG-orb cpG-o1" />
+      <div className="cpG-orb cpG-o2" />
+
       <div className="cpG-stage">
         <div className="cpG-road"><div className="cpG-lanes" /></div>
         <div className="cpG-car">
-          <svg viewBox="0 0 260 180" width="150" height="104" aria-hidden="true">
-            <path d="M62 104 L86 52 Q90 46 98 46 L162 46 Q170 46 174 52 L198 104 Z" fill="#0f766e" />
-            <path d="M78 100 L96 62 Q98 58 104 58 L156 58 Q162 58 164 62 L182 100 Z" fill="#cdeee8" />
-            <g fill="#0f172a">
-              <circle cx="103" cy="80" r="11" /><circle cx="130" cy="76" r="11" /><circle cx="157" cy="80" r="11" />
-            </g>
-            <rect x="26" y="100" width="208" height="60" rx="26" fill="#0d9488" />
-            <rect x="40" y="118" width="30" height="16" rx="8" fill="#fef3c7" />
-            <rect x="190" y="118" width="30" height="16" rx="8" fill="#fef3c7" />
-            <rect x="44" y="152" width="40" height="20" rx="10" fill="#1f2937" />
-            <rect x="176" y="152" width="40" height="20" rx="10" fill="#1f2937" />
-          </svg>
+          <img src={LOGO_SRC} alt="CoRYD" className="cpG-logo" />
         </div>
       </div>
 
@@ -30,24 +24,49 @@ export default function LoadingSplash({ message = 'Loading…' }) {
 
 const cssG = `
 .cpG-splash{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
-  background:linear-gradient(180deg,#f0fdfa,#fff);z-index:50;font-family:ui-sans-serif,system-ui,-apple-system,sans-serif;}
-.cpG-stage{position:relative;width:220px;height:150px;overflow:hidden;}
+  background:
+    radial-gradient(at 20% 12%, rgba(167,139,250,.40) 0px, transparent 55%),
+    radial-gradient(at 82% 88%, rgba(139,92,246,.30)  0px, transparent 52%),
+    #eeecf5;
+  overflow:hidden;z-index:50;font-family:Inter,ui-sans-serif,system-ui,-apple-system,sans-serif;}
+
+.cpG-orb{position:absolute;border-radius:50%;filter:blur(46px);pointer-events:none;}
+.cpG-o1{width:260px;height:260px;background:rgba(124,58,237,.26);top:-60px;left:-50px;animation:cpG-float 14s ease-in-out infinite;}
+.cpG-o2{width:220px;height:220px;background:rgba(148,163,184,.32);bottom:-50px;right:-40px;animation:cpG-float 18s ease-in-out infinite reverse;}
+@keyframes cpG-float{0%,100%{transform:translate3d(0,0,0) scale(1);}50%{transform:translate3d(22px,-26px,0) scale(1.1);}}
+
+.cpG-stage{position:relative;width:240px;height:160px;overflow:hidden;}
 .cpG-road{position:absolute;left:50%;bottom:0;width:180%;height:90px;
-  transform:translateX(-50%) perspective(240px) rotateX(62deg);transform-origin:bottom center;background:#475569;overflow:hidden;border-radius:6px;}
+  transform:translateX(-50%) perspective(240px) rotateX(62deg);transform-origin:bottom center;
+  background:linear-gradient(180deg,#55556c,#414155);overflow:hidden;border-radius:8px;
+  box-shadow:0 -6px 24px rgba(59,7,100,.16);}
 .cpG-lanes{position:absolute;left:calc(50% - 5px);top:-50%;width:10px;height:200%;
-  background:repeating-linear-gradient(to bottom,#f8fafc 0 22px,transparent 22px 46px);animation:cpG-move .28s linear infinite;}
+  background:repeating-linear-gradient(to bottom,#ede9fe 0 22px,transparent 22px 46px);animation:cpG-move .28s linear infinite;}
 @keyframes cpG-move{to{transform:translateY(46px);}}
-.cpG-car{position:absolute;left:50%;bottom:44px;transform:translateX(-50%);animation:cpG-shake .28s linear infinite;
-  filter:drop-shadow(0 10px 8px rgba(2,6,23,.18));}
-@keyframes cpG-shake{0%{transform:translateX(-50%) translateY(0) rotate(-.6deg);}50%{transform:translateX(-50%) translateY(-2px) rotate(.6deg);}100%{transform:translateX(-50%) translateY(0) rotate(-.6deg);}}
-.cpG-title{margin:16px 0 0;font-size:18px;font-weight:800;letter-spacing:-.01em;
-  background:linear-gradient(90deg,#134e4a 0 40%,#5eead4 50%,#134e4a 60% 100%);background-size:200% 100%;
-  -webkit-background-clip:text;background-clip:text;color:transparent;animation:cpG-shimmer 1.6s linear infinite;}
+
+.cpG-car{position:absolute;left:50%;bottom:46px;transform:translateX(-50%);
+  animation:cpG-shake .3s linear infinite;
+  padding:10px 14px;border-radius:20px;
+  background:rgba(255,255,255,.45);backdrop-filter:blur(17px);-webkit-backdrop-filter:blur(17px);
+  border:1px solid rgba(255,255,255,.6);
+  box-shadow:0 8px 32px rgba(59,7,100,.15),inset 0 1px 0 rgba(255,255,255,.85);}
+@keyframes cpG-shake{
+  0%{transform:translateX(-50%) translateY(0)    rotate(-.7deg);}
+  50%{transform:translateX(-50%) translateY(-3px) rotate(.7deg);}
+  100%{transform:translateX(-50%) translateY(0)   rotate(-.7deg);}}
+.cpG-logo{width:132px;height:auto;display:block;}
+
+.cpG-title{margin:20px 0 0;font-size:18px;font-weight:800;letter-spacing:-.015em;
+  background:linear-gradient(90deg,#5b21b6 0 40%,#c4b5fd 50%,#5b21b6 60% 100%);background-size:200% 100%;
+  -webkit-background-clip:text;background-clip:text;color:transparent;animation:cpG-shimmer 1.8s linear infinite;}
 @keyframes cpG-shimmer{to{background-position:-200% 0;}}
-.cpG-dots{display:flex;gap:6px;margin-top:12px;}
-.cpG-dots span{width:8px;height:8px;border-radius:50%;background:#0d9488;animation:cpG-blink 1s ease-in-out infinite;}
+
+.cpG-dots{display:flex;gap:6px;margin-top:14px;}
+.cpG-dots span{width:8px;height:8px;border-radius:50%;background:#7c3aed;animation:cpG-blink 1s ease-in-out infinite;}
 .cpG-dots span:nth-child(2){animation-delay:.15s;} .cpG-dots span:nth-child(3){animation-delay:.3s;}
 @keyframes cpG-blink{0%,100%{opacity:.25;transform:translateY(0);}50%{opacity:1;transform:translateY(-4px);}}
-.cpG-msg{margin:12px 0 0;color:#64748b;font-size:13px;}
-@media (prefers-reduced-motion:reduce){.cpG-lanes,.cpG-car,.cpG-title,.cpG-dots span{animation:none;}}
+
+.cpG-msg{margin:12px 0 0;color:#71718a;font-size:13px;font-weight:500;}
+
+@media (prefers-reduced-motion:reduce){.cpG-lanes,.cpG-car,.cpG-title,.cpG-dots span,.cpG-orb{animation:none;}}
 `;
