@@ -77,6 +77,23 @@ export function registerSockets(io) {
       socket.to(roomFor(tripId)).emit('presence:leave', { employeeId });
     });
 
+    // ── Presence ping: client can ask "is the peer online right now?" ──
+    // Responds directly to the requesting socket (not broadcast).
+    // Use this to refresh peer status after page load in case presence:join
+    // was emitted before the client's listener was registered.
+    socket.on('presence:ping', async (tripId) => {
+      if (!tripId) return;
+      const trip = await loadTripIfParticipant(orgId, tripId, employeeId).catch(() => null);
+      if (!trip) return;
+      const roomName = roomFor(tripId);
+      const clientsInRoom = io.sockets.adapter.rooms.get(roomName);
+      const othersInRoom = clientsInRoom
+        ? [...clientsInRoom].filter((sid) => sid !== socket.id).length
+        : 0;
+      // Reply directly to this socket with peer status.
+      socket.emit(othersInRoom > 0 ? 'peer:online' : 'peer:offline');
+    });
+
     // ── Live location (driver -> peers) ───────────────────
     socket.on('location:update', async (payload = {}) => {
       const { tripId, lat, lng, speed, heading, eta } = payload;

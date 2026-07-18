@@ -124,15 +124,40 @@ export default function TripDetail() {
     if (!socket) return;
     socketRef.current = socket;
 
+    const onLocation = (p) => setVehiclePos({ lat: p.lat, lng: p.lng });
+    const onChat     = (m) => setMessages((prev) => [...prev, m]);
+    const onJoin     = ()  => setPeerOnline(true);
+    const onLeave    = ()  => setPeerOnline(false);
+    const onSignal   = (msg) => handleSignal(msg);
+    // peer:online is a lightweight ack the server sends back when the peer
+    // is already in the room and we query them with presence:ping.
+    const onPeerOnline  = () => setPeerOnline(true);
+    const onPeerOffline = () => setPeerOnline(false);
+
+    // ── Register ALL listeners BEFORE joining the room ──────────────────
+    // This is critical: the server emits presence:join synchronously inside
+    // the trip:join handler (if a peer is already present). If we call
+    // joinRoom() first and register listeners after, we miss that event.
+    socket.on('location:update', onLocation);
+    socket.on('chat:new',        onChat);
+    socket.on('presence:join',   onJoin);
+    socket.on('presence:leave',  onLeave);
+    socket.on('call:signal',     onSignal);
+    socket.on('peer:online',     onPeerOnline);
+    socket.on('peer:offline',    onPeerOffline);
+
     const joinRoom = () => {
-      // Reset peer online state when we (re)connect — we'll learn the real state from ack.
+      // Reset peer online state on every (re)connect — ack will tell us the truth.
       setPeerOnline(false);
       socket.emit('trip:join', id, (res) => {
         if (res?.ok === false) {
           setError(res.error);
         } else if (res?.ok) {
-          // peerOnline is true if the peer is already in the room when we join.
+          // peerOnline is true if the peer was already in the room when we joined.
           setPeerOnline(!!res.peerOnline);
+          // Safety net: ping 1s later in case presence:join was fired just before
+          // our listener was registered (listener-registration race condition).
+          setTimeout(() => socket.emit('presence:ping', id), 1000);
         }
       });
     };
@@ -141,20 +166,7 @@ export default function TripDetail() {
     if (socket.connected) joinRoom();
 
     // Re-join the trip room on every reconnection (network blip, server restart, etc.)
-    // This is critical: without re-joining, the socket won't receive chat:new / call:signal.
     socket.on('connect', joinRoom);
-
-    const onLocation = (p) => setVehiclePos({ lat: p.lat, lng: p.lng });
-    const onChat     = (m) => setMessages((prev) => [...prev, m]);
-    const onJoin     = ()  => setPeerOnline(true);
-    const onLeave    = ()  => setPeerOnline(false);
-    const onSignal   = (msg) => handleSignal(msg);
-
-    socket.on('location:update', onLocation);
-    socket.on('chat:new',        onChat);
-    socket.on('presence:join',   onJoin);
-    socket.on('presence:leave',  onLeave);
-    socket.on('call:signal',     onSignal);
 
     return () => {
       // Remove all listeners for this component instance on unmount.
@@ -164,6 +176,8 @@ export default function TripDetail() {
       socket.off('presence:join',   onJoin);
       socket.off('presence:leave',  onLeave);
       socket.off('call:signal',     onSignal);
+      socket.off('peer:online',     onPeerOnline);
+      socket.off('peer:offline',    onPeerOffline);
       socket.emit('trip:leave', id);
       stopLocationWatch();
       // Clean up the WebRTC call if the user navigates away mid-call.
