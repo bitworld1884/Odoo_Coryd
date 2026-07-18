@@ -12,7 +12,7 @@ async function main() {
   if (!config.databaseUrl) throw new Error('DATABASE_URL not set (copy server/.env.example -> server/.env)');
   const sql = fs.readFileSync(schemaPath, 'utf8');
   const client = new pg.Client({
-    connectionString: config.databaseUrl,
+    connectionString: config.databaseUrl.replace('?sslmode=require', ''),
     ssl: config.databaseUrl.includes('localhost') ? false : { rejectUnauthorized: false },
   });
   await client.connect();

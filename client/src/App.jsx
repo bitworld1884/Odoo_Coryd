@@ -18,8 +18,12 @@ import AdminDashboard from './pages/AdminDashboard.jsx';
 
 function Protected({ children, adminOnly }) {
   const { user, loading } = useAuth();
+  const location = window.location;
   if (loading) return <div className="p-10 text-center text-slate-500">Loading…</div>;
-  if (!user) return <Navigate to="/login" replace />;
+  if (!user) {
+    const next = encodeURIComponent(location.pathname + location.search + location.hash);
+    return <Navigate to={`/login?next=${next}`} replace />;
+  }
   if (adminOnly && !user.isAdmin) return <Navigate to="/app" replace />;
   return children;
 }

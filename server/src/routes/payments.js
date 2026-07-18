@@ -1,5 +1,6 @@
 import { Router } from 'express';
-import crypto from 'node:crypto';
+import crypto from 'crypto';
+import Razorpay from 'razorpay';
 import { query, withTenant } from '../db.js';
 import { asyncHandler, badRequest, notFound, forbidden } from '../utils/http.js';
 import { requireAuth, requireEmployee } from '../middleware/auth.js';
@@ -8,146 +9,280 @@ import config from '../config.js';
 const router = Router();
 router.use(requireAuth, requireEmployee);
 
-const RAZORPAY_ORDERS_URL = 'https://api.razorpay.com/v1/orders';
-
-function requireRazorpayConfig() {
+/* ── Razorpay client (lazy — only initialised when keys are set) ── */
+let rzp = null;
+function getRzp() {
   if (!config.razorpay.keyId || !config.razorpay.keySecret) {
-    throw badRequest('Razorpay keys are not configured on the server');
+    throw badRequest('Razorpay is not configured on this server. Add RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET to server/.env');
   }
+  if (!rzp) {
+    rzp = new Razorpay({
+      key_id:     config.razorpay.keyId,
+      key_secret: config.razorpay.keySecret,
+    });
+  }
+  return rzp;
 }
 
-function verifyRazorpaySignature(orderId, paymentId, signature) {
+/* ── Helper: verify Razorpay HMAC signature ── */
+function verifySignature(orderId, paymentId, signature) {
+  const body    = `${orderId}|${paymentId}`;
   const expected = crypto
     .createHmac('sha256', config.razorpay.keySecret)
-    .update(`${orderId}|${paymentId}`)
+    .update(body)
     .digest('hex');
-  const actual = Buffer.from(signature || '');
-  const expectedBuffer = Buffer.from(expected);
-  return actual.length === expectedBuffer.length && crypto.timingSafeEqual(expectedBuffer, actual);
+  return expected === signature;
 }
 
-function razorpayAuthHeader() {
-  return `Basic ${Buffer.from(`${config.razorpay.keyId}:${config.razorpay.keySecret}`).toString('base64')}`;
-}
-
-async function fetchRazorpayOrder(orderId) {
-  const rpRes = await fetch(`${RAZORPAY_ORDERS_URL}/${orderId}`, {
-    headers: { Authorization: razorpayAuthHeader() },
-  });
-  const order = await rpRes.json().catch(() => null);
-  if (!rpRes.ok) {
-    throw badRequest(order?.error?.description || 'Could not verify Razorpay order');
+/* ─────────────────────────────────────────────────────────────────
+   GET /api/payments/razorpay/config
+   Returns the public key_id so the frontend can initialise the SDK.
+───────────────────────────────────────────────────────────────── */
+router.get('/razorpay/config', asyncHandler(async (_req, res) => {
+  if (!config.razorpay.keyId) {
+    return res.json({ enabled: false, keyId: null });
   }
-  return order;
-}
-
-async function verifyRazorpayOrderForPayment(payment, orderId, method) {
-  const order = await fetchRazorpayOrder(orderId);
-  const expectedAmount = Math.round(Number(payment.amount) * 100);
-  if (order.receipt !== payment.payment_id || order.amount !== expectedAmount || order.currency !== 'INR') {
-    throw badRequest('Razorpay order does not match this payment');
-  }
-  if (order.notes?.method && order.notes.method !== method) {
-    throw badRequest('Razorpay order method does not match this payment');
-  }
-}
-
-/** GET /api/payments/trip/:tripId — latest payment for a trip. */
-router.get('/trip/:tripId', asyncHandler(async (req, res) => {
-  const row = (await query(
-    `SELECT * FROM payments WHERE organization_id=$1 AND trip_id=$2 ORDER BY created_at DESC LIMIT 1`,
-    [req.auth.orgId, req.params.tripId])).rows[0] || null;
-  res.json({ payment: row });
+  res.json({ enabled: true, keyId: config.razorpay.keyId });
 }));
 
-/**
- * POST /api/payments/razorpay/order — create a Razorpay Checkout order.
- * body: { tripId, method: 'CARD'|'UPI' }
- */
-router.post('/razorpay/order', asyncHandler(async (req, res) => {
-  const { tripId, method } = req.body || {};
-  if (!tripId || !method) throw badRequest('tripId and method are required');
-  if (!['CARD', 'UPI'].includes(method)) throw badRequest('Razorpay is only available for CARD or UPI');
-  requireRazorpayConfig();
+/* ─────────────────────────────────────────────────────────────────
+   POST /api/payments/razorpay/qr
+   body: { tripId }
+   Creates a Razorpay UPI QR Code — passenger scans with any UPI app.
+   Returns { qrId, imageUrl, amount, expiresAt }
+───────────────────────────────────────────────────────────────── */
+router.post('/razorpay/qr', asyncHandler(async (req, res) => {
+  const { tripId } = req.body || {};
+  if (!tripId) throw badRequest('tripId is required');
+
+  const orgId = req.auth.orgId;
+  const me    = req.auth.employeeId;
 
   const payment = (await query(
-    `SELECT * FROM payments WHERE trip_id=$1 AND organization_id=$2 AND status='PENDING'`,
-    [tripId, req.auth.orgId])).rows[0];
+    `SELECT * FROM payments WHERE trip_id=$1 AND organization_id=$2 AND status='PENDING' LIMIT 1`,
+    [tripId, orgId]
+  )).rows[0];
   if (!payment) throw notFound('No pending payment for this trip');
-  if (payment.payer_employee_id !== req.auth.employeeId) throw forbidden('Only the passenger can pay for this trip');
+  if (payment.payer_employee_id !== me) throw forbidden('Only the passenger can initiate payment');
 
-  const amount = Math.round(Number(payment.amount) * 100);
-  if (!Number.isFinite(amount) || amount <= 0) throw badRequest('Invalid payment amount');
+  const rzpClient = getRzp();
+  const amountPaise = Math.round(Number(payment.amount) * 100);
 
-  const rpRes = await fetch(RAZORPAY_ORDERS_URL, {
-    method: 'POST',
-    headers: {
-      Authorization: razorpayAuthHeader(),
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      amount,
-      currency: 'INR',
-      receipt: payment.payment_id,
-      notes: {
-        tripId,
-        paymentId: payment.payment_id,
-        organizationId: req.auth.orgId,
-        method,
-      },
-    }),
+  // QR code expires in 15 minutes
+  const closeBy = Math.floor(Date.now() / 1000) + 15 * 60;
+
+  const qr = await rzpClient.qrCode.create({
+    type:           'upi_qr',
+    name:           'Carpool Payment',
+    usage:          'single_use',
+    fixed_amount:   true,
+    payment_amount: amountPaise,
+    description:    `Trip payment — ₹${payment.amount}`,
+    close_by:       closeBy,
   });
 
-  const order = await rpRes.json().catch(() => null);
-  if (!rpRes.ok) {
-    throw badRequest(order?.error?.description || 'Could not create Razorpay order');
-  }
+  // Store QR id so we can poll its status later
+  await query(
+    `UPDATE payments SET payment_gateway_ref=$1 WHERE payment_id=$2 AND organization_id=$3`,
+    [`qr_${qr.id}`, payment.payment_id, orgId]
+  );
 
   res.json({
-    keyId: config.razorpay.keyId,
-    order,
-    payment: {
-      payment_id: payment.payment_id,
-      amount: payment.amount,
-    },
+    qrId:      qr.id,
+    imageUrl:  qr.image_url,
+    amount:    payment.amount,
+    expiresAt: new Date(closeBy * 1000).toISOString(),
   });
 }));
 
-/**
- * POST /api/payments/pay — settle a trip payment.
- * body: { tripId, method: 'CASH'|'CARD'|'UPI'|'WALLET', gatewayRef? }
- * Only the passenger (payer) may pay. WALLET moves balance passenger -> driver.
- */
-router.post('/pay', asyncHandler(async (req, res) => {
-  const { tripId, method, gatewayRef, razorpayOrderId, razorpayPaymentId, razorpaySignature } = req.body || {};
-  if (!tripId || !method) throw badRequest('tripId and method are required');
-  if (!['CASH', 'CARD', 'UPI', 'WALLET'].includes(method)) throw badRequest('Invalid payment method');
-  if (['CARD', 'UPI'].includes(method)) {
-    requireRazorpayConfig();
-    if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature) {
-      throw badRequest('Razorpay verification details are required');
-    }
-    if (!verifyRazorpaySignature(razorpayOrderId, razorpayPaymentId, razorpaySignature)) {
-      throw badRequest('Razorpay payment verification failed');
-    }
-  }
+/* ─────────────────────────────────────────────────────────────────
+   GET /api/payments/razorpay/qr/:qrId/status?tripId=
+   Polls whether the QR payment has been completed.
+───────────────────────────────────────────────────────────────── */
+router.get('/razorpay/qr/:qrId/status', asyncHandler(async (req, res) => {
+  const { tripId } = req.query;
+  if (!tripId) throw badRequest('tripId query param required');
+
+  const rzpClient = getRzp();
   const orgId = req.auth.orgId;
-  const me = req.auth.employeeId;
+
+  // Fetch payments made on this QR from Razorpay
+  const { items } = await rzpClient.qrCode.fetchAllPayments(req.params.qrId, {});
+  const paid = items?.find((p) => p.status === 'captured');
+
+  if (paid) {
+    // Mark our DB payment as completed
+    const updated = (await query(
+      `UPDATE payments
+          SET status='COMPLETED', payment_method='RAZORPAY', payment_gateway_ref=$3, paid_at=now()
+        WHERE trip_id=$1 AND organization_id=$2 AND status='PENDING'
+        RETURNING *`,
+      [tripId, orgId, paid.id]
+    )).rows[0];
+
+    // Close the QR code so it can't be scanned again
+    try { await rzpClient.qrCode.close(req.params.qrId); } catch {}
+
+    if (updated) {
+      await query(
+        `INSERT INTO notifications (organization_id, employee_id, title, body, notif_type)
+         VALUES ($1,$2,'Payment received',$3,'PAYMENT_RECEIVED')`,
+        [orgId, updated.payee_employee_id,
+         `Payment of ₹${updated.amount} received via Razorpay QR.`]
+      );
+    }
+
+    return res.json({ paid: true, payment: updated || null });
+  }
+
+  res.json({ paid: false });
+}));
+
+/* ─────────────────────────────────────────────────────────────────
+   POST /api/payments/razorpay/order
+   body: { tripId }
+   Creates a Razorpay Order and returns orderId + amount for checkout.
+───────────────────────────────────────────────────────────────── */
+router.post('/razorpay/order', asyncHandler(async (req, res) => {
+  const { tripId } = req.body || {};
+  if (!tripId) throw badRequest('tripId is required');
+
+  const orgId = req.auth.orgId;
+  const me    = req.auth.employeeId;
+
+  // Fetch pending payment
+  const payment = (await query(
+    `SELECT * FROM payments WHERE trip_id=$1 AND organization_id=$2 AND status='PENDING' LIMIT 1`,
+    [tripId, orgId]
+  )).rows[0];
+  if (!payment) throw notFound('No pending payment for this trip');
+  if (payment.payer_employee_id !== me) throw forbidden('Only the passenger can initiate payment');
+
+  const rzpClient = getRzp();
+
+  // Amount in paise (Razorpay uses smallest currency unit)
+  const amountPaise = Math.round(Number(payment.amount) * 100);
+
+  const order = await rzpClient.orders.create({
+    amount:   amountPaise,
+    currency: 'INR',
+    receipt:  `trip_${tripId.slice(0, 8)}`,
+    notes: {
+      tripId,
+      orgId,
+      paymentId: payment.payment_id,
+    },
+  });
+
+  // Persist the razorpay order id on the payment row for later verification
+  await query(
+    `UPDATE payments SET payment_gateway_ref=$1 WHERE payment_id=$2 AND organization_id=$3`,
+    [order.id, payment.payment_id, orgId]
+  );
+
+  res.json({
+    orderId:    order.id,
+    amount:     order.amount,       // paise
+    currency:   order.currency,
+    paymentId:  payment.payment_id,
+    keyId:      config.razorpay.keyId,
+  });
+}));
+
+/* ─────────────────────────────────────────────────────────────────
+   POST /api/payments/razorpay/verify
+   body: { razorpay_order_id, razorpay_payment_id, razorpay_signature, tripId }
+   Verifies HMAC, then marks the DB payment COMPLETED.
+───────────────────────────────────────────────────────────────── */
+router.post('/razorpay/verify', asyncHandler(async (req, res) => {
+  const {
+    razorpay_order_id,
+    razorpay_payment_id,
+    razorpay_signature,
+    tripId,
+  } = req.body || {};
+
+  if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature || !tripId) {
+    throw badRequest('Missing Razorpay verification fields');
+  }
+
+  if (!config.razorpay.keySecret) throw badRequest('Razorpay not configured');
+
+  const valid = verifySignature(razorpay_order_id, razorpay_payment_id, razorpay_signature);
+  if (!valid) throw badRequest('Payment signature verification failed');
+
+  const orgId = req.auth.orgId;
+  const me    = req.auth.employeeId;
 
   const out = await withTenant(orgId, async (client) => {
     const payment = (await client.query(
       `SELECT * FROM payments WHERE trip_id=$1 AND organization_id=$2 AND status='PENDING' FOR UPDATE`,
-      [tripId, orgId])).rows[0];
+      [tripId, orgId]
+    )).rows[0];
+    if (!payment) throw notFound('No pending payment found for this trip');
+    if (payment.payer_employee_id !== me) throw forbidden('Not the payer');
+
+    // Mark completed
+    const updated = (await client.query(
+      `UPDATE payments
+          SET status='COMPLETED',
+              payment_method='RAZORPAY',
+              payment_gateway_ref=$3,
+              paid_at=now()
+        WHERE payment_id=$1 AND organization_id=$2
+        RETURNING *`,
+      [payment.payment_id, orgId, razorpay_payment_id]
+    )).rows[0];
+
+    // Notify driver
+    await client.query(
+      `INSERT INTO notifications (organization_id, employee_id, title, body, notif_type)
+       VALUES ($1,$2,'Payment received',$3,'PAYMENT_RECEIVED')`,
+      [orgId, payment.payee_employee_id,
+       `Payment of ₹${payment.amount} received via Razorpay (ref: ${razorpay_payment_id}).`]
+    );
+
+    return updated;
+  });
+
+  res.json({ payment: out, success: true });
+}));
+
+/* ─────────────────────────────────────────────────────────────────
+   GET /api/payments/trip/:tripId — latest payment for a trip.
+───────────────────────────────────────────────────────────────── */
+router.get('/trip/:tripId', asyncHandler(async (req, res) => {
+  const row = (await query(
+    `SELECT * FROM payments WHERE organization_id=$1 AND trip_id=$2 ORDER BY created_at DESC LIMIT 1`,
+    [req.auth.orgId, req.params.tripId]
+  )).rows[0] || null;
+  res.json({ payment: row });
+}));
+
+/* ─────────────────────────────────────────────────────────────────
+   POST /api/payments/pay — settle via CASH / CARD / UPI / WALLET
+   (unchanged manual payment flow)
+───────────────────────────────────────────────────────────────── */
+router.post('/pay', asyncHandler(async (req, res) => {
+  const { tripId, method, gatewayRef } = req.body || {};
+  if (!tripId || !method) throw badRequest('tripId and method are required');
+  if (!['CASH', 'CARD', 'UPI', 'WALLET', 'RAZORPAY'].includes(method)) throw badRequest('Invalid payment method');
+  const orgId = req.auth.orgId;
+  const me    = req.auth.employeeId;
+
+  const out = await withTenant(orgId, async (client) => {
+    const payment = (await client.query(
+      `SELECT * FROM payments WHERE trip_id=$1 AND organization_id=$2 AND status='PENDING' FOR UPDATE`,
+      [tripId, orgId]
+    )).rows[0];
     if (!payment) throw notFound('No pending payment for this trip');
     if (payment.payer_employee_id !== me) throw forbidden('Only the passenger can pay for this trip');
-    if (['CARD', 'UPI'].includes(method)) {
-      await verifyRazorpayOrderForPayment(payment, razorpayOrderId, method);
-    }
 
     if (method === 'WALLET') {
       const payerWallet = (await client.query(
         `SELECT * FROM wallets WHERE organization_id=$1 AND employee_id=$2 FOR UPDATE`,
-        [orgId, payment.payer_employee_id])).rows[0];
+        [orgId, payment.payer_employee_id]
+      )).rows[0];
       if (!payerWallet || Number(payerWallet.balance) < Number(payment.amount)) {
         throw badRequest('Insufficient wallet balance');
       }
@@ -159,14 +294,16 @@ router.post('/pay', asyncHandler(async (req, res) => {
          VALUES ($1,$2,'RIDE_PAYMENT',$3,$4,$5)`,
         [orgId, payerWallet.wallet_id, payment.amount, payerAfter, payment.payment_id]);
 
-      // Credit driver wallet (create if missing).
+      // Credit driver wallet
       let driverWallet = (await client.query(
         `SELECT * FROM wallets WHERE organization_id=$1 AND employee_id=$2 FOR UPDATE`,
-        [orgId, payment.payee_employee_id])).rows[0];
+        [orgId, payment.payee_employee_id]
+      )).rows[0];
       if (!driverWallet) {
         driverWallet = (await client.query(
           `INSERT INTO wallets (organization_id, employee_id, balance) VALUES ($1,$2,0) RETURNING *`,
-          [orgId, payment.payee_employee_id])).rows[0];
+          [orgId, payment.payee_employee_id]
+        )).rows[0];
       }
       const driverAfter = (Number(driverWallet.balance) + Number(payment.amount)).toFixed(2);
       await client.query(`UPDATE wallets SET balance=$1, updated_at=now() WHERE wallet_id=$2 AND organization_id=$3`,
@@ -180,12 +317,14 @@ router.post('/pay', asyncHandler(async (req, res) => {
     const updated = (await client.query(
       `UPDATE payments SET status='COMPLETED', payment_method=$3, payment_gateway_ref=$4, paid_at=now()
        WHERE payment_id=$1 AND organization_id=$2 RETURNING *`,
-      [payment.payment_id, orgId, method, razorpayPaymentId || gatewayRef || null])).rows[0];
+      [payment.payment_id, orgId, method, gatewayRef || null]
+    )).rows[0];
 
     await client.query(
       `INSERT INTO notifications (organization_id, employee_id, title, body, notif_type)
        VALUES ($1,$2,'Payment received',$3,'PAYMENT_RECEIVED')`,
-      [orgId, payment.payee_employee_id, `Payment of ${payment.amount} received via ${method}.`]);
+      [orgId, payment.payee_employee_id,
+       `Payment of ${payment.amount} received via ${method}.`]);
 
     return updated;
   });

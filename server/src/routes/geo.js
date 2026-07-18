@@ -10,14 +10,20 @@ router.use(requireAuth);
 router.get('/search', asyncHandler(async (req, res) => {
   const q = req.query.q;
   if (!q) return res.json({ results: [] });
-  res.json({ results: await geocode(String(q)) });
+  try {
+    res.json({ results: await geocode(String(q)) });
+  } catch (err) {
+    console.error('[geo] geocode error:', err.message);
+    res.json({ results: [] }); // graceful fallback — UI stays functional
+  }
 }));
 
 /** GET /api/geo/reverse?lat=&lng= */
 router.get('/reverse', asyncHandler(async (req, res) => {
   const { lat, lng } = req.query;
   if (lat == null || lng == null) throw badRequest('lat and lng required');
-  res.json({ address: await reverseGeocode(lat, lng) });
+  const address = await reverseGeocode(lat, lng);
+  res.json({ address, label: address });
 }));
 
 /** POST /api/geo/route — { pickup:{lat,lng}, destination:{lat,lng} } (OSRM). */

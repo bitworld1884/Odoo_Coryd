@@ -83,8 +83,9 @@ async function resetDemoTenant(c) {
 
 async function main() {
   if (!config.databaseUrl) throw new Error('DATABASE_URL not set');
+  const connectionString = config.databaseUrl.replace(/\?sslmode=require$/, '');
   const c = new pg.Client({
-    connectionString: config.databaseUrl,
+    connectionString,
     ssl: config.databaseUrl.includes('localhost') ? false : { rejectUnauthorized: false },
   });
 

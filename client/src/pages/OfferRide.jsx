@@ -5,10 +5,20 @@ import AddressInput from '../components/AddressInput.jsx';
 import MapView from '../components/MapView.jsx';
 import { Button, Card, Input, Select, Empty, money } from '../components/ui.jsx';
 
+const WEEKDAY_OPTIONS = [
+  { label: 'Mon', value: 'MON' },
+  { label: 'Tue', value: 'TUE' },
+  { label: 'Wed', value: 'WED' },
+  { label: 'Thu', value: 'THU' },
+  { label: 'Fri', value: 'FRI' },
+  { label: 'Sat', value: 'SAT' },
+  { label: 'Sun', value: 'SUN' },
+];
+
 export default function OfferRide() {
   const navigate = useNavigate();
   const [vehicles, setVehicles] = useState(null);
-  const [form, setForm] = useState({ vehicleId: '', date: '', time: '', totalSeats: 1, farePerSeat: '', isRecurring: false });
+  const [form, setForm] = useState({ vehicleId: '', date: '', time: '', totalSeats: 1, farePerSeat: '', isRecurring: false, selectedDays: [] });
   const [pickup, setPickup] = useState(null);
   const [dest, setDest] = useState(null);
   const [route, setRoute] = useState(null);
@@ -40,6 +50,7 @@ export default function OfferRide() {
     if (!pickup || !dest) return setError('Select pickup and destination');
     if (!form.date || !form.time) return setError('Select date and time');
     if (!form.farePerSeat) return setError('Enter a fare per seat');
+    if (form.isRecurring && form.selectedDays.length === 0) return setError('Select at least one weekday for recurring rides');
     setBusy(true);
     try {
       const departure = new Date(`${form.date}T${form.time}`).toISOString();
@@ -50,6 +61,7 @@ export default function OfferRide() {
         departureDatetime: departure,
         totalSeats: +form.totalSeats, farePerSeat: +form.farePerSeat,
         isRecurring: form.isRecurring,
+        recurrencePattern: form.isRecurring ? { days: form.selectedDays } : null,
         distanceKm: route?.distanceKm, durationMinutes: route?.durationMinutes,
       });
       navigate('/app/trips?role=driver');
@@ -93,8 +105,33 @@ export default function OfferRide() {
           <Input label="Fare/seat (₹)" type="number" min="0" value={form.farePerSeat} onChange={set('farePerSeat')} />
         </div>
         <label className="flex items-center gap-2 text-sm text-slate-600">
-          <input type="checkbox" checked={form.isRecurring} onChange={set('isRecurring')} /> Recurring ride
+          <input type="checkbox" checked={form.isRecurring} onChange={(e) => setForm({ ...form, isRecurring: e.target.checked, selectedDays: e.target.checked ? form.selectedDays : [] })} /> Recurring ride
         </label>
+        {form.isRecurring && (
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-slate-700">Allowed weekdays</p>
+            <div className="flex flex-wrap gap-2">
+              {WEEKDAY_OPTIONS.map((day) => {
+                const active = form.selectedDays.includes(day.value);
+                return (
+                  <button
+                    key={day.value}
+                    type="button"
+                    onClick={() => {
+                      const selectedDays = active
+                        ? form.selectedDays.filter((d) => d !== day.value)
+                        : [...form.selectedDays, day.value];
+                      setForm({ ...form, selectedDays });
+                    }}
+                    className={`rounded-full border px-3 py-1 text-sm ${active ? 'border-brand-dark bg-brand-dark text-white' : 'border-slate-200 bg-white text-slate-600'}`}
+                  >
+                    {day.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
         {error && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-600">{error}</p>}
         <div className="flex gap-3">
           <Button variant="outline" onClick={confirmRoute} disabled={busy || !pickup || !dest}>Confirm route</Button>

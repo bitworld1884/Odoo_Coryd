@@ -4,57 +4,64 @@ import api, { apiError } from '../api.js';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { getSocket } from '../socket.js';
 import MapView from '../components/MapView.jsx';
+import RazorpayButton from '../components/RazorpayButton.jsx';
+import RazorpayQR from '../components/RazorpayQR.jsx';
 import { Button, Card, Badge, money } from '../components/ui.jsx';
 
-const NEXT = { BOOKED: 'STARTED', STARTED: 'IN_PROGRESS', IN_PROGRESS: 'COMPLETED' };
+const NEXT       = { BOOKED: 'STARTED', STARTED: 'IN_PROGRESS', IN_PROGRESS: 'COMPLETED' };
 const NEXT_LABEL = { BOOKED: 'Start trip', STARTED: 'Begin journey', IN_PROGRESS: 'Complete trip' };
 const RTC_CONFIG = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
-const RAZORPAY_CHECKOUT_URL = 'https://checkout.razorpay.com/v1/checkout.js';
 
-function loadRazorpayCheckout() {
-  if (window.Razorpay) return Promise.resolve();
+/** Haversine distance in km */
+function haversineKm(a, b) {
+  const R = 6371;
+  const dLat = ((b.lat - a.lat) * Math.PI) / 180;
+  const dLng = ((b.lng - a.lng) * Math.PI) / 180;
+  const s =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((a.lat * Math.PI) / 180) *
+      Math.cos((b.lat * Math.PI) / 180) *
+      Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1 - s));
+}
 
-  return new Promise((resolve, reject) => {
-    const existing = document.querySelector(`script[src="${RAZORPAY_CHECKOUT_URL}"]`);
-    if (existing) {
-      existing.addEventListener('load', resolve, { once: true });
-      existing.addEventListener('error', reject, { once: true });
-      return;
-    }
-
-    const script = document.createElement('script');
-    script.src = RAZORPAY_CHECKOUT_URL;
-    script.onload = resolve;
-    script.onerror = () => reject(new Error('Could not load Razorpay Checkout'));
-    document.body.appendChild(script);
-  });
+/** Format seconds → "X min Y sec" */
+function fmtEta(secs) {
+  if (secs < 60) return `${secs}s`;
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  return s > 0 ? `${m}m ${s}s` : `${m}m`;
 }
 
 export default function TripDetail() {
-  const { id } = useParams();
-  const { user } = useAuth();
+  const { id }    = useParams();
+  const { user }  = useAuth();
 
-  const [trip, setTrip] = useState(null);
-  const [payment, setPayment] = useState(null);
-  const [messages, setMessages] = useState([]);
+  const [trip,       setTrip]       = useState(null);
+  const [payment,    setPayment]    = useState(null);
+  const [messages,   setMessages]   = useState([]);
   const [vehiclePos, setVehiclePos] = useState(null);
+  const [myLocation, setMyLocation] = useState(null);   // ← passenger live GPS
   const [peerOnline, setPeerOnline] = useState(false);
-  const [draft, setDraft] = useState('');
-  const [error, setError] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [payingMethod, setPayingMethod] = useState('');
-  const [callState, setCallState] = useState('idle'); // idle|calling|incoming|connected
+  const [draft,      setDraft]      = useState('');
+  const [error,      setError]      = useState('');
+  const [busy,       setBusy]       = useState(false);
+  const [showQR,   setShowQR]   = useState(false);
+  const [callState,  setCallState]  = useState('idle'); // idle|calling|incoming|connected
+  const [eta,        setEta]        = useState(null);   // { distKm, minutes }
 
-  const socketRef = useRef(null);
-  const pcRef = useRef(null);
+  const socketRef      = useRef(null);
+  const pcRef          = useRef(null);
   const localStreamRef = useRef(null);
   const remoteAudioRef = useRef(null);
-  const watchRef = useRef(null);
-  const pendingOffer = useRef(null);
-  const chatEnd = useRef(null);
+  const watchRef       = useRef(null);  // driver GPS watch id
+  const myWatchRef     = useRef(null);  // passenger GPS watch id
+  const pendingOffer   = useRef(null);
+  const chatEnd        = useRef(null);
 
   const iAmDriver = trip && trip.driver_employee_id === user.employeeId;
 
+  /* ── Load trip ── */
   const loadTrip = useCallback(async () => {
     const { data } = await api.get(`/trips/${id}`);
     setTrip(data.trip);
@@ -62,7 +69,6 @@ export default function TripDetail() {
     if (data.lastPing) setVehiclePos({ lat: +data.lastPing.latitude, lng: +data.lastPing.longitude });
   }, [id]);
 
-  // Initial data
   useEffect(() => {
     loadTrip().catch((e) => setError(apiError(e)));
     api.get(`/trips/${id}/messages`).then(({ data }) => setMessages(data.messages)).catch(() => {});
@@ -70,7 +76,30 @@ export default function TripDetail() {
 
   useEffect(() => { chatEnd.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
-  // Socket wiring
+  /* ── Compute ETA whenever vehicle or destination changes ── */
+  useEffect(() => {
+    if (!vehiclePos || !trip) { setEta(null); return; }
+    const dest = { lat: +trip.destination_lat, lng: +trip.destination_lng };
+    const distKm = haversineKm(vehiclePos, dest);
+    // Assume average 30 km/h in urban traffic
+    const minutes = Math.max(1, Math.round((distKm / 30) * 60));
+    setEta({ distKm: distKm.toFixed(1), minutes });
+  }, [vehiclePos, trip]);
+
+  /* ── My own live location (both driver & passenger) ── */
+  useEffect(() => {
+    if (!navigator.geolocation) return;
+    myWatchRef.current = navigator.geolocation.watchPosition(
+      (pos) => setMyLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      () => {},
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 12000 }
+    );
+    return () => {
+      if (myWatchRef.current != null) navigator.geolocation.clearWatch(myWatchRef.current);
+    };
+  }, []);
+
+  /* ── Socket wiring ── */
   useEffect(() => {
     const socket = getSocket();
     if (!socket) return;
@@ -79,31 +108,31 @@ export default function TripDetail() {
     socket.emit('trip:join', id, (res) => { if (res?.ok === false) setError(res.error); });
 
     const onLocation = (p) => setVehiclePos({ lat: p.lat, lng: p.lng });
-    const onChat = (m) => setMessages((prev) => [...prev, m]);
-    const onJoin = () => setPeerOnline(true);
-    const onLeave = () => setPeerOnline(false);
-    const onSignal = (msg) => handleSignal(msg);
+    const onChat     = (m) => setMessages((prev) => [...prev, m]);
+    const onJoin     = ()  => setPeerOnline(true);
+    const onLeave    = ()  => setPeerOnline(false);
+    const onSignal   = (msg) => handleSignal(msg);
 
     socket.on('location:update', onLocation);
-    socket.on('chat:new', onChat);
-    socket.on('presence:join', onJoin);
-    socket.on('presence:leave', onLeave);
-    socket.on('call:signal', onSignal);
+    socket.on('chat:new',        onChat);
+    socket.on('presence:join',   onJoin);
+    socket.on('presence:leave',  onLeave);
+    socket.on('call:signal',     onSignal);
 
     return () => {
       socket.emit('trip:leave', id);
       socket.off('location:update', onLocation);
-      socket.off('chat:new', onChat);
-      socket.off('presence:join', onJoin);
-      socket.off('presence:leave', onLeave);
-      socket.off('call:signal', onSignal);
+      socket.off('chat:new',        onChat);
+      socket.off('presence:join',   onJoin);
+      socket.off('presence:leave',  onLeave);
+      socket.off('call:signal',     onSignal);
       stopLocationWatch();
       teardownCall(false);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
-  // Driver broadcasts GPS while the trip is live
+  /* ── Driver broadcasts GPS while trip is live ── */
   useEffect(() => {
     if (iAmDriver && trip && ['STARTED', 'IN_PROGRESS'].includes(trip.status)) startLocationWatch();
     else stopLocationWatch();
@@ -117,9 +146,11 @@ export default function TripDetail() {
         const { latitude, longitude, speed, heading } = pos.coords;
         setVehiclePos({ lat: latitude, lng: longitude });
         socketRef.current?.emit('location:update', {
-          tripId: id, lat: latitude, lng: longitude,
-          speed: speed != null ? +(speed * 3.6).toFixed(1) : null,
-          heading: heading != null ? Math.round(heading) : null,
+          tripId: id,
+          lat: latitude,
+          lng: longitude,
+          speed:   speed   != null ? +(speed * 3.6).toFixed(1) : null,
+          heading: heading != null ? Math.round(heading)         : null,
         });
       },
       () => {},
@@ -127,10 +158,13 @@ export default function TripDetail() {
     );
   }
   function stopLocationWatch() {
-    if (watchRef.current != null) { navigator.geolocation.clearWatch(watchRef.current); watchRef.current = null; }
+    if (watchRef.current != null) {
+      navigator.geolocation.clearWatch(watchRef.current);
+      watchRef.current = null;
+    }
   }
 
-  // ── Lifecycle ────────────────────────────────────────────
+  /* ── Trip lifecycle ── */
   const advance = async (status) => {
     setBusy(true); setError('');
     try {
@@ -141,7 +175,7 @@ export default function TripDetail() {
     finally { setBusy(false); }
   };
 
-  // ── Chat ─────────────────────────────────────────────────
+  /* ── Chat ── */
   const send = (e) => {
     e.preventDefault();
     const text = draft.trim();
@@ -152,7 +186,7 @@ export default function TripDetail() {
     setDraft('');
   };
 
-  // ── WebRTC voice call ────────────────────────────────────
+  /* ── WebRTC voice call ── */
   async function getMic() {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     localStreamRef.current = stream;
@@ -197,12 +231,12 @@ export default function TripDetail() {
   async function handleSignal(msg) {
     const { type, data } = msg;
     if (type === 'invite') { if (callState === 'idle') setCallState('incoming'); return; }
-    if (type === 'offer') { pendingOffer.current = data; newPeer(); if (callState !== 'connected') setCallState('incoming'); return; }
+    if (type === 'offer')  { pendingOffer.current = data; newPeer(); if (callState !== 'connected') setCallState('incoming'); return; }
     if (type === 'answer') { await pcRef.current?.setRemoteDescription(new RTCSessionDescription(data)); setCallState('connected'); return; }
-    if (type === 'ice') { try { await pcRef.current?.addIceCandidate(new RTCIceCandidate(data)); } catch {} return; }
+    if (type === 'ice')    { try { await pcRef.current?.addIceCandidate(new RTCIceCandidate(data)); } catch {} return; }
     if (type === 'reject' || type === 'end') { teardownCall(false); return; }
   }
-  function endCall() { socketRef.current?.emit('call:signal', { tripId: id, type: 'end' }); teardownCall(false); }
+  function endCall()    { socketRef.current?.emit('call:signal', { tripId: id, type: 'end' });    teardownCall(false); }
   function rejectCall() { socketRef.current?.emit('call:signal', { tripId: id, type: 'reject' }); teardownCall(false); }
   function teardownCall() {
     try { pcRef.current?.close(); } catch {}
@@ -213,13 +247,8 @@ export default function TripDetail() {
     setCallState('idle');
   }
 
-  // ── Payment ──────────────────────────────────────────────
+  /* ── Payment ── */
   const pay = async (method) => {
-    if (['CARD', 'UPI'].includes(method)) {
-      await payWithRazorpay(method);
-      return;
-    }
-
     setBusy(true); setError('');
     try {
       const { data } = await api.post('/payments/pay', { tripId: id, method });
@@ -228,75 +257,20 @@ export default function TripDetail() {
     finally { setBusy(false); }
   };
 
-  const payWithRazorpay = async (method) => {
-    setBusy(true); setPayingMethod(method); setError('');
-    try {
-      const { data } = await api.post('/payments/razorpay/order', { tripId: id, method });
-      await loadRazorpayCheckout();
-
-      await new Promise((resolve, reject) => {
-        const checkout = new window.Razorpay({
-          key: data.keyId,
-          amount: data.order.amount,
-          currency: data.order.currency,
-          name: 'Coryd Carpool',
-          description: `${method} payment for trip fare`,
-          order_id: data.order.id,
-          prefill: {
-            name: user.fullName || '',
-            email: user.email || '',
-            contact: user.phoneNumber || '',
-          },
-          notes: {
-            tripId: id,
-            paymentId: data.payment.payment_id,
-            method,
-          },
-          config: {
-            display: {
-              blocks: {
-                selected_method: {
-                  name: method === 'UPI' ? 'Pay using UPI' : 'Pay using card',
-                  instruments: [{ method: method.toLowerCase() }],
-                },
-              },
-              sequence: ['block.selected_method'],
-              preferences: { show_default_blocks: true },
-            },
-          },
-          theme: { color: '#2563eb' },
-          modal: {
-            ondismiss: () => resolve(),
-          },
-          handler: async (response) => {
-            try {
-              const verified = await api.post('/payments/pay', {
-                tripId: id,
-                method,
-                razorpayOrderId: response.razorpay_order_id,
-                razorpayPaymentId: response.razorpay_payment_id,
-                razorpaySignature: response.razorpay_signature,
-              });
-              setPayment(verified.data.payment);
-              resolve();
-            } catch (e) {
-              reject(e);
-            }
-          },
-        });
-
-        checkout.open();
-      });
-    } catch (e) { setError(apiError(e)); }
-    finally { setBusy(false); setPayingMethod(''); }
-  };
-
   if (!trip) return <div className="p-8 text-slate-500">{error || 'Loading…'}</div>;
 
-  const peer = iAmDriver
+  const peer    = iAmDriver
     ? { name: trip.passenger_name, phone: trip.passenger_phone, role: 'Passenger' }
-    : { name: trip.driver_name, phone: trip.driver_phone, role: 'Driver' };
+    : { name: trip.driver_name,    phone: trip.driver_phone,    role: 'Driver' };
   const showPay = !iAmDriver && payment && payment.status === 'PENDING';
+  const isLive  = ['STARTED', 'IN_PROGRESS'].includes(trip.status);
+
+  /* Status badge label with ETA */
+  const trackingLabel = isLive
+    ? trip.status === 'IN_PROGRESS'
+      ? `🟢 Trip in progress${eta ? ` · ~${eta.minutes} min to dest (${eta.distKm} km)` : ''}`
+      : `🟡 Heading to pickup`
+    : `${trip.distance_km} km route`;
 
   return (
     <div className="space-y-5">
@@ -306,46 +280,78 @@ export default function TripDetail() {
       </div>
 
       <div className="grid gap-5 lg:grid-cols-3">
-        {/* Left: map + details */}
+        {/* ── Left: map + details ── */}
         <div className="space-y-5 lg:col-span-2">
+
+          {/* Live tracking map */}
           <Card className="overflow-hidden">
             <div className="flex items-center justify-between px-5 py-3 text-sm">
-              <span className="font-semibold text-slate-700">Live tracking</span>
-              <span className="text-slate-500">
-                {trip.status === 'IN_PROGRESS' ? '🟢 Trip in progress' : trip.status === 'STARTED' ? '🟡 Heading to pickup' : trip.distance_km + ' km route'}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-slate-700">Live tracking</span>
+                {isLive && (
+                  <span className="flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    LIVE
+                  </span>
+                )}
+              </div>
+              <span className="text-xs text-slate-500">{trackingLabel}</span>
             </div>
             <MapView
-              pickup={{ lat: +trip.pickup_lat, lng: +trip.pickup_lng }}
-              destination={{ lat: +trip.destination_lat, lng: +trip.destination_lng }}
+              pickup={{ lat: +trip.pickup_lat, lng: +trip.pickup_lng, address: trip.pickup_address }}
+              destination={{ lat: +trip.destination_lat, lng: +trip.destination_lng, address: trip.destination_address }}
               routeGeometry={trip.route_polyline}
-              vehicle={['STARTED', 'IN_PROGRESS'].includes(trip.status) ? vehiclePos : null}
-              height={340}
+              vehicle={isLive ? vehiclePos : null}
+              myLocation={!iAmDriver ? myLocation : null}
+              height={360}
+              follow={isLive}
+              liveTrip={isLive}
             />
           </Card>
 
+          {/* ETA banner when live */}
+          {isLive && eta && (
+            <div className="flex items-center gap-3 rounded-xl bg-teal-50 px-4 py-3 text-sm">
+              <span className="text-2xl">🕐</span>
+              <div>
+                <div className="font-semibold text-teal-800">
+                  ~{eta.minutes} min estimated arrival
+                </div>
+                <div className="text-xs text-teal-600">{eta.distKm} km remaining to destination</div>
+              </div>
+              <div className="ml-auto text-xs text-teal-500">
+                {vehiclePos ? `Car at ${vehiclePos.lat.toFixed(4)}, ${vehiclePos.lng.toFixed(4)}` : ''}
+              </div>
+            </div>
+          )}
+
+          {/* Trip details */}
           <Card className="p-5">
             <h2 className="mb-3 font-semibold text-slate-700">Trip details</h2>
             <div className="grid grid-cols-2 gap-y-2 text-sm">
-              <Info label="Driver" value={trip.driver_name} />
+              <Info label="Driver"    value={trip.driver_name} />
               <Info label="Passenger" value={trip.passenger_name} />
-              <Info label="Vehicle" value={`${trip.vehicle_model} (${trip.registration_number})`} />
-              <Info label="Schedule" value={new Date(trip.departure_datetime).toLocaleString()} />
-              <Info label="Pickup" value={trip.pickup_address} />
+              <Info label="Vehicle"   value={`${trip.vehicle_model} (${trip.registration_number})`} />
+              <Info label="Schedule"  value={new Date(trip.departure_datetime).toLocaleString()} />
+              <Info label="Pickup"    value={trip.pickup_address} />
               <Info label="Destination" value={trip.destination_address} />
-              <Info label="Distance" value={`${trip.distance_km} km`} />
-              <Info label="Fare" value={money(trip.fare_amount)} />
+              <Info label="Distance"  value={`${trip.distance_km} km`} />
+              <Info label="Fare"      value={money(trip.fare_amount)} />
             </div>
 
             {iAmDriver && NEXT[trip.status] && (
               <div className="mt-4">
-                <Button onClick={() => advance(NEXT[trip.status])} disabled={busy}>{NEXT_LABEL[trip.status]}</Button>
+                <Button onClick={() => advance(NEXT[trip.status])} disabled={busy}>
+                  {NEXT_LABEL[trip.status]}
+                </Button>
               </div>
             )}
             {!iAmDriver && trip.status === 'BOOKED' && (
               <p className="mt-4 text-sm text-slate-400">Waiting for the driver to start the trip.</p>
             )}
-            {error && <p className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-600">{error}</p>}
+            {error && (
+              <p className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-600">{error}</p>
+            )}
           </Card>
 
           {/* Payment */}
@@ -353,14 +359,59 @@ export default function TripDetail() {
             <Card className="p-5">
               <h2 className="mb-3 font-semibold text-slate-700">Payment</h2>
               {payment.status === 'COMPLETED' ? (
-                <p className="text-sm text-emerald-600">✓ Paid {money(payment.amount)} via {payment.payment_method}.</p>
+                <div className="flex items-center gap-3 rounded-xl bg-emerald-50 px-4 py-3">
+                  <span className="text-2xl">✅</span>
+                  <div>
+                    <p className="font-semibold text-emerald-700">
+                      Paid {money(payment.amount)} via {payment.payment_method}
+                    </p>
+                    {payment.payment_gateway_ref && (
+                      <p className="text-xs text-emerald-600 mt-0.5">
+                        Ref: {payment.payment_gateway_ref}
+                      </p>
+                    )}
+                  </div>
+                </div>
               ) : (
                 <>
-                  <p className="mb-3 text-sm text-slate-600">Amount due: <b>{money(payment.amount)}</b></p>
+                  <div className="mb-4 flex items-center justify-between rounded-xl bg-slate-50 px-4 py-3">
+                    <span className="text-sm text-slate-600">Amount due</span>
+                    <span className="text-xl font-bold text-brand-dark">{money(payment.amount)}</span>
+                  </div>
+
+                  {/* ── Primary: Razorpay checkout + QR ── */}
+                  <div className="mb-3 flex flex-wrap gap-2">
+                    <RazorpayButton
+                      tripId={trip.trip_id}
+                      amount={payment.amount}
+                      disabled={busy}
+                      onSuccess={(p) => { setPayment(p); }}
+                      onError={(msg) => setError(msg)}
+                    />
+                    <button
+                      onClick={() => setShowQR(true)}
+                      disabled={busy}
+                      className="flex items-center gap-2 rounded-xl border-2 border-teal-400 bg-teal-50 px-4 py-2.5 text-sm font-semibold text-teal-700 hover:bg-teal-100 transition disabled:opacity-50"
+                    >
+                      <span className="text-lg">⊞</span> Show QR Code
+                    </button>
+                  </div>
+
+                  {/* ── Divider ── */}
+                  <div className="relative my-4">
+                    <div className="absolute inset-0 flex items-center">
+                      <div className="w-full border-t border-slate-200" />
+                    </div>
+                    <div className="relative flex justify-center text-xs text-slate-400">
+                      <span className="bg-white px-2">or pay manually</span>
+                    </div>
+                  </div>
+
+                  {/* ── Fallback: manual methods ── */}
                   <div className="flex flex-wrap gap-2">
-                    {['CASH', 'CARD', 'UPI', 'WALLET'].map((m) => (
-                      <Button key={m} variant="subtle" onClick={() => pay(m)} disabled={busy}>
-                        {payingMethod === m ? 'Opening...' : m}
+                    {['CASH', 'UPI', 'WALLET'].map((m) => (
+                      <Button key={m} variant="outline" onClick={() => pay(m)} disabled={busy}>
+                        {m === 'CASH' ? '💵' : m === 'UPI' ? '📱' : '👛'} {m}
                       </Button>
                     ))}
                   </div>
@@ -370,16 +421,19 @@ export default function TripDetail() {
           )}
         </div>
 
-        {/* Right: chat + call */}
+        {/* ── Right: chat + call ── */}
         <div className="space-y-5">
           <Card className="flex h-[520px] flex-col">
             <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
               <div>
                 <div className="text-sm font-semibold text-slate-700">{peer.name}</div>
-                <div className="text-xs text-slate-400">{peer.role} · {peerOnline ? 'online' : 'offline'}</div>
+                <div className="flex items-center gap-1.5 text-xs text-slate-400">
+                  {peerOnline && <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />}
+                  {peer.role} · {peerOnline ? 'online' : 'offline'}
+                </div>
               </div>
-              {callState === 'idle' && <Button variant="subtle" onClick={startCall}>📞 Call</Button>}
-              {callState === 'calling' && <Button variant="danger" onClick={endCall}>Cancel</Button>}
+              {callState === 'idle'      && <Button variant="subtle" onClick={startCall}>📞 Call</Button>}
+              {callState === 'calling'   && <Button variant="danger" onClick={endCall}>Cancel</Button>}
               {callState === 'connected' && <Button variant="danger" onClick={endCall}>End call</Button>}
             </div>
 
@@ -392,18 +446,28 @@ export default function TripDetail() {
                 </span>
               </div>
             )}
-            {callState === 'connected' && <div className="bg-emerald-50 px-4 py-1.5 text-center text-xs text-emerald-600">🎙️ Call connected</div>}
+            {callState === 'connected' && (
+              <div className="bg-emerald-50 px-4 py-1.5 text-center text-xs text-emerald-600">🎙️ Call connected</div>
+            )}
 
             <div className="flex-1 space-y-2 overflow-y-auto p-4">
-              {messages.length === 0 && <p className="text-center text-xs text-slate-400">No messages yet. Say hi 👋</p>}
+              {messages.length === 0 && (
+                <p className="text-center text-xs text-slate-400">No messages yet. Say hi 👋</p>
+              )}
               {messages.map((m) => {
                 const mine = m.sender_employee_id === user.employeeId;
                 if (m.message_type === 'CALL_LOG') {
-                  return <div key={m.message_id} className="text-center text-[11px] text-slate-400">— {m.message_text} —</div>;
+                  return (
+                    <div key={m.message_id} className="text-center text-[11px] text-slate-400">
+                      — {m.message_text} —
+                    </div>
+                  );
                 }
                 return (
                   <div key={m.message_id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[75%] rounded-2xl px-3 py-2 text-sm ${mine ? 'bg-brand text-white' : 'bg-slate-100 text-slate-700'}`}>
+                    <div className={`max-w-[75%] rounded-2xl px-3 py-2 text-sm ${
+                      mine ? 'bg-brand text-white' : 'bg-slate-100 text-slate-700'
+                    }`}>
                       {m.message_text}
                       <div className={`mt-0.5 text-[10px] ${mine ? 'text-white/70' : 'text-slate-400'}`}>
                         {new Date(m.sent_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -427,6 +491,18 @@ export default function TripDetail() {
           </Card>
         </div>
       </div>
+
+      {showQR && (
+        <RazorpayQR
+          tripId={trip.trip_id}
+          amount={payment.amount}
+          onSuccess={(p) => {
+            setPayment(p);
+            setShowQR(false);
+          }}
+          onClose={() => setShowQR(false)}
+        />
+      )}
 
       <audio ref={remoteAudioRef} autoPlay />
     </div>

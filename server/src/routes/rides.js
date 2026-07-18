@@ -24,7 +24,7 @@ const RIDE_JOIN = `
  */
 router.get('/', asyncHandler(async (req, res) => {
   const { date, seats, pickupLat, pickupLng, destLat, destLng } = req.query;
-  const radiusKm = parseFloat(req.query.radiusKm) || 10;
+  const radiusKm = parseFloat(req.query.radiusKm) || 15;
   const seatsNeeded = parseInt(seats, 10) || 1;
 
   const params = [req.auth.orgId, seatsNeeded];
@@ -33,22 +33,33 @@ router.get('/', asyncHandler(async (req, res) => {
       AND r.status = 'OPEN'
       AND r.available_seats >= $2::smallint
       AND r.departure_datetime >= now() - interval '1 hour'`;
-  if (date) {
-    params.push(date);
-    sql += ` AND r.departure_datetime::date = $${params.length}::date`;
-  }
   sql += ' ORDER BY r.departure_datetime ASC LIMIT 200';
 
   let rows = (await query(sql, params)).rows;
 
-  // Optional proximity filter/ranking (free, in-process haversine).
-  if (pickupLat && pickupLng) {
+  if (date) {
+    const requestedDate = new Date(`${date}T12:00:00`);
+    const targetDay = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'][requestedDate.getDay()];
+    rows = rows.filter((r) => {
+      const depDate = new Date(r.departure_datetime);
+      const rideDate = depDate.toISOString().slice(0, 10);
+      const recurrence = typeof r.recurrence_pattern === 'string'
+        ? JSON.parse(r.recurrence_pattern)
+        : (r.recurrence_pattern || {});
+      const allowedDays = Array.isArray(recurrence.days) ? recurrence.days : [];
+      return rideDate === date || (r.is_recurring && allowedDays.includes(targetDay));
+    });
+  }
+
+  // Optional proximity filter — ONLY applied when pickup coords are provided.
+  // If no coords given, return all org rides so users can browse without GPS.
+  if (pickupLat && pickupLng && !isNaN(+pickupLat) && !isNaN(+pickupLng)) {
     const p = { lat: +pickupLat, lng: +pickupLng };
-    const d = destLat && destLng ? { lat: +destLat, lng: +destLng } : null;
+    const d = destLat && destLng && !isNaN(+destLat) ? { lat: +destLat, lng: +destLng } : null;
     rows = rows
       .map((r) => {
         const pickupDist = haversineKm(p, { lat: +r.pickup_lat, lng: +r.pickup_lng });
-        const destDist = d ? haversineKm(d, { lat: +r.destination_lat, lng: +r.destination_lng }) : 0;
+        const destDist   = d ? haversineKm(d, { lat: +r.destination_lat, lng: +r.destination_lng }) : 0;
         return { ...r, pickup_distance_km: pickupDist, dest_distance_km: destDist };
       })
       .filter((r) => r.pickup_distance_km <= radiusKm && (!d || r.dest_distance_km <= radiusKm))
@@ -127,7 +138,7 @@ router.post('/', asyncHandler(async (req, res) => {
        route_polyline, distance_km, duration_minutes,
        departure_datetime, total_seats, available_seats, fare_per_seat,
        is_recurring, recurrence_pattern, status)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$14,$15,$16,$17,'OPEN')
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::smallint,$14::smallint,$15,$16,$17,'OPEN')
      RETURNING *`,
     [req.auth.orgId, req.auth.employeeId, b.vehicleId,
      b.pickupAddress, b.pickupLat, b.pickupLng,
