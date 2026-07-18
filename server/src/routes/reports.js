@@ -37,15 +37,20 @@ router.get('/me', asyncHandler(async (req, res) => {
 router.get('/history', asyncHandler(async (req, res) => {
   const role = req.query.role || 'all';
   let cond = '(h.driver_employee_id=$2 OR h.passenger_employee_id=$2)';
-  if (role === 'driver') cond = 'h.driver_employee_id=$2';
+  if (role === 'driver')    cond = 'h.driver_employee_id=$2';
   if (role === 'passenger') cond = 'h.passenger_employee_id=$2';
   const rows = (await query(
-    `SELECT h.*, du.full_name AS driver_name, pu.full_name AS passenger_name
+    `SELECT h.*,
+            du.full_name AS driver_name, pu.full_name AS passenger_name,
+            r.pickup_lat, r.pickup_lng, r.destination_lat, r.destination_lng
      FROM ride_history h
-     JOIN employees de ON de.employee_id=h.driver_employee_id AND de.organization_id=h.organization_id
-     JOIN users du ON du.user_id=de.user_id
-     JOIN employees pe ON pe.employee_id=h.passenger_employee_id AND pe.organization_id=h.organization_id
-     JOIN users pu ON pu.user_id=pe.user_id
+     -- ride_history.trip_id → trips → rides (lat/lng lives in rides, not trips)
+     LEFT JOIN trips t  ON t.trip_id        = h.trip_id        AND t.organization_id = h.organization_id
+     LEFT JOIN rides r  ON r.ride_id        = t.ride_id        AND r.organization_id = h.organization_id
+     JOIN employees de  ON de.employee_id   = h.driver_employee_id    AND de.organization_id = h.organization_id
+     JOIN users du      ON du.user_id       = de.user_id
+     JOIN employees pe  ON pe.employee_id   = h.passenger_employee_id AND pe.organization_id = h.organization_id
+     JOIN users pu      ON pu.user_id       = pe.user_id
      WHERE h.organization_id=$1 AND ${cond}
      ORDER BY h.trip_date DESC, h.created_at DESC LIMIT 200`,
     [req.auth.orgId, req.auth.employeeId])).rows;

@@ -40,7 +40,7 @@ router.post('/', asyncHandler(async (req, res) => {
 
     const booking = (await client.query(
       `INSERT INTO ride_bookings (organization_id, ride_id, passenger_employee_id, seats_booked, fare_amount)
-       VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+       VALUES ($1,$2,$3,$4::smallint,$5) RETURNING *`,
       [orgId, rideId, passengerId, seats, fare]
     )).rows[0];
 

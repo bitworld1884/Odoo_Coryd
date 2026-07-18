@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { apiError } from '../api.js';
 import { Button, Input, Card } from '../components/ui.jsx';
@@ -7,6 +7,7 @@ import { Button, Input, Card } from '../components/ui.jsx';
 export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [form, setForm] = useState({ email: '', password: '' });
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -16,7 +17,9 @@ export default function Login() {
     setError(''); setBusy(true);
     try {
       await login(form.email, form.password);
-      navigate('/app');
+      const params = new URLSearchParams(location.search);
+      const next = params.get('next');
+      navigate(next && next.startsWith('/app') ? next : '/app');
     } catch (err) { setError(apiError(err)); }
     finally { setBusy(false); }
   };

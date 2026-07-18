@@ -19,8 +19,9 @@ const DEMO = {
 
 async function main() {
   if (!config.databaseUrl) throw new Error('DATABASE_URL not set');
+  const connectionString = config.databaseUrl.replace(/\?sslmode=require$/, '');
   const c = new pg.Client({
-    connectionString: config.databaseUrl,
+    connectionString,
     ssl: config.databaseUrl.includes('localhost') ? false : { rejectUnauthorized: false },
   });
   await c.connect();
@@ -79,20 +80,52 @@ async function main() {
 
     // A sample OPEN ride (Bengaluru: Koramangala -> Whitefield) tomorrow 9am
     const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1); tomorrow.setHours(9, 0, 0, 0);
-    await c.query(
+    const ride = (await c.query(
       `INSERT INTO rides (organization_id, driver_employee_id, vehicle_id,
          pickup_address, pickup_lat, pickup_lng,
          destination_address, destination_lat, destination_lng,
          distance_km, duration_minutes, departure_datetime, total_seats, available_seats, fare_per_seat, status)
        VALUES ($1,$2,$3,'Koramangala, Bengaluru',12.935200,77.624600,
-         'Whitefield, Bengaluru',12.969800,77.749900, 18.50, 55, $4, 3, 3, 80.00, 'OPEN')`,
-      [orgId, empIds[0], vehicle.vehicle_id, tomorrow.toISOString()]);
+         'Whitefield, Bengaluru',12.969800,77.749900, 18.50, 55, $4, 3, 3, 80.00, 'OPEN')
+       RETURNING *`,
+      [orgId, empIds[0], vehicle.vehicle_id, tomorrow.toISOString()])).rows[0];
+
+    // Create a completed trip for payment testing: passenger has a booking and trip is done, payment still pending.
+    const passengerEmployeeId = empIds[1];
+    const booking = (await c.query(
+      `INSERT INTO ride_bookings (organization_id, ride_id, passenger_employee_id, seats_booked, fare_amount, booking_status)
+       VALUES ($1,$2,$3,1,80.00,'COMPLETED')
+       RETURNING *`,
+      [orgId, ride.ride_id, passengerEmployeeId])).rows[0];
+
+    const trip = (await c.query(
+      `INSERT INTO trips (organization_id, ride_id, booking_id, driver_employee_id, passenger_employee_id, status, started_at, completed_at, actual_distance_km, actual_duration_minutes)
+       VALUES ($1,$2,$3,$4,$5,'COMPLETED', now() - interval '60 minutes', now(), 18.50, 55)
+       RETURNING *`,
+      [orgId, ride.ride_id, booking.booking_id, empIds[0], passengerEmployeeId])).rows[0];
+
+    await c.query(
+      `INSERT INTO trip_status_history (organization_id, trip_id, status, changed_by_employee_id)
+       VALUES ($1,$2,'COMPLETED',$3)`,
+      [orgId, trip.trip_id, empIds[0]]);
+
+    await c.query(
+      `INSERT INTO payments (organization_id, trip_id, payer_employee_id, payee_employee_id, amount, payment_method, status)
+       VALUES ($1,$2,$3,$4,80.00,'CASH','PENDING')
+       ON CONFLICT (organization_id, payment_id) DO NOTHING`,
+      [orgId, trip.trip_id, passengerEmployeeId, empIds[0]]);
+
+    await c.query(
+      `INSERT INTO ride_history (organization_id, trip_id, driver_employee_id, passenger_employee_id, vehicle_id, pickup_address, destination_address, trip_date, distance_km, fare_amount, fuel_cost, final_status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,CURRENT_DATE,18.50,80.00,0.00,'COMPLETED')`,
+      [orgId, trip.trip_id, empIds[0], passengerEmployeeId, vehicle.vehicle_id, 'Koramangala, Bengaluru', 'Whitefield, Bengaluru']);
 
     await c.query('COMMIT');
     console.log('✅ Seeded demo org "Acme Corp".');
     console.log('   Org code : ACME');
     console.log('   Admin    : admin@acme.com / admin123');
     console.log('   Employees: ravi@acme.com, priya@acme.com, arjun@acme.com  (pw: password123)');
+    console.log('   Razorpay test trip: completed trip created for Priya to pay Ravi (₹80.00 pending).');
   } catch (e) {
     await c.query('ROLLBACK');
     throw e;
