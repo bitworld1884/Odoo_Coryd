@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { query } from '../db.js';
 import { asyncHandler, badRequest, notFound } from '../utils/http.js';
 import { requireAuth, requireEmployee } from '../middleware/auth.js';
-import { getRoute, haversineKm } from '../utils/geo.js';
+import { getRoute, haversineKm, sampleRouteNodes, reverseGeocode } from '../utils/geo.js';
 
 const router = Router();
 router.use(requireAuth, requireEmployee);
@@ -18,13 +18,18 @@ const RIDE_JOIN = `
   JOIN vehicles v  ON v.vehicle_id = r.vehicle_id AND v.organization_id = r.organization_id
 `;
 
+const PICKUP_RADIUS_KM = 5;
+
 /**
  * GET /api/rides — search open rides (org-scoped).
  * query: date (YYYY-MM-DD), seats, pickupLat, pickupLng, destLat, destLng, radiusKm
+ *
+ * When pickupLat/pickupLng are provided, each ride is checked against its
+ * pickup nodes: only rides where the passenger is within PICKUP_RADIUS_KM of
+ * at least one node are returned. The nearest node is attached as `nearest_node`.
  */
 router.get('/', asyncHandler(async (req, res) => {
-  const { date, seats, pickupLat, pickupLng, destLat, destLng } = req.query;
-  const radiusKm = parseFloat(req.query.radiusKm) || 15;
+  const { date, seats, pickupLat, pickupLng } = req.query;
   const seatsNeeded = parseInt(seats, 10) || 1;
 
   const params = [req.auth.orgId, seatsNeeded];
@@ -37,6 +42,7 @@ router.get('/', asyncHandler(async (req, res) => {
 
   let rows = (await query(sql, params)).rows;
 
+  // Date / recurrence filter
   if (date) {
     const requestedDate = new Date(`${date}T12:00:00`);
     const targetDay = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'][requestedDate.getDay()];
@@ -51,21 +57,53 @@ router.get('/', asyncHandler(async (req, res) => {
     });
   }
 
-  // Optional proximity filter — ONLY applied when pickup coords are provided.
-  // If no coords given, return all org rides so users can browse without GPS.
+  // ── Node-based proximity filter ─────────────────────────────────
   if (pickupLat && pickupLng && !isNaN(+pickupLat) && !isNaN(+pickupLng)) {
-    const p = { lat: +pickupLat, lng: +pickupLng };
-    const d = destLat && destLng && !isNaN(+destLat) ? { lat: +destLat, lng: +destLng } : null;
-    rows = rows
-      .map((r) => {
-        const pickupDist = haversineKm(p, { lat: +r.pickup_lat, lng: +r.pickup_lng });
-        const destDist = d ? haversineKm(d, { lat: +r.destination_lat, lng: +r.destination_lng }) : 0;
-        return { ...r, pickup_distance_km: pickupDist, dest_distance_km: destDist };
-      })
-      .filter((r) => r.pickup_distance_km <= radiusKm && (!d || r.dest_distance_km <= radiusKm))
-      .sort((a, b) => (a.pickup_distance_km + a.dest_distance_km) - (b.pickup_distance_km + b.dest_distance_km));
+    const passengerLoc = { lat: +pickupLat, lng: +pickupLng };
+
+    // Fetch all nodes for the candidate rides in a single query.
+    if (rows.length > 0) {
+      const rideIds = rows.map((r) => r.ride_id);
+      const nodeRows = (await query(
+        `SELECT node_id, ride_id, node_index, lat, lng, address
+         FROM ride_pickup_nodes
+         WHERE ride_id = ANY($1::uuid[])`,
+        [rideIds]
+      )).rows;
+
+      // Build a map: ride_id -> [{node}]
+      const nodesByRide = {};
+      for (const node of nodeRows) {
+        if (!nodesByRide[node.ride_id]) nodesByRide[node.ride_id] = [];
+        nodesByRide[node.ride_id].push(node);
+      }
+
+      // Filter rides and attach the nearest node within radius.
+      const eligible = [];
+      for (const ride of rows) {
+        const nodes = nodesByRide[ride.ride_id] || [];
+        if (nodes.length === 0) continue; // ride has no nodes yet, skip
+
+        let nearest = null;
+        let nearestDist = Infinity;
+        for (const node of nodes) {
+          const dist = haversineKm(passengerLoc, { lat: +node.lat, lng: +node.lng });
+          if (dist < nearestDist) {
+            nearestDist = dist;
+            nearest = { ...node, distance_km: dist };
+          }
+        }
+
+        if (nearest && nearestDist <= PICKUP_RADIUS_KM) {
+          eligible.push({ ...ride, nearest_node: nearest });
+        }
+      }
+
+      return res.json({ rides: eligible });
+    }
   }
 
+  // No location provided — return all rides without node filtering (browse mode).
   res.json({ rides: rows });
 }));
 
@@ -78,26 +116,45 @@ router.get('/mine', asyncHandler(async (req, res) => {
   res.json({ rides: rows });
 }));
 
+/** GET /api/rides/:id/nodes — pickup nodes for a ride. */
+router.get('/:id/nodes', asyncHandler(async (req, res) => {
+  const nodes = (await query(
+    `SELECT node_id, node_index, lat, lng, address
+     FROM ride_pickup_nodes
+     WHERE organization_id = $1 AND ride_id = $2
+     ORDER BY node_index`,
+    [req.auth.orgId, req.params.id]
+  )).rows;
+  res.json({ nodes });
+}));
+
 /** GET /api/rides/:id */
 router.get('/:id', asyncHandler(async (req, res) => {
   const ride = (await query(`${RIDE_JOIN} WHERE r.organization_id = $1 AND r.ride_id = $2`,
     [req.auth.orgId, req.params.id])).rows[0];
   if (!ride) throw notFound('Ride not found');
   const bookings = (await query(
-    `SELECT b.*, u.full_name AS passenger_name, u.phone_number AS passenger_phone
+    `SELECT b.*, u.full_name AS passenger_name, u.phone_number AS passenger_phone,
+            n.lat AS node_lat, n.lng AS node_lng, n.address AS node_address, n.node_index
      FROM ride_bookings b
      JOIN employees e ON e.employee_id = b.passenger_employee_id AND e.organization_id = b.organization_id
      JOIN users u ON u.user_id = e.user_id
+     LEFT JOIN ride_pickup_nodes n ON n.node_id = b.pickup_node_id
      WHERE b.organization_id = $1 AND b.ride_id = $2 AND b.booking_status = 'CONFIRMED'`,
     [req.auth.orgId, req.params.id]
   )).rows;
-  res.json({ ride, bookings });
+  // Also return nodes for map display
+  const nodes = (await query(
+    `SELECT node_id, node_index, lat, lng, address FROM ride_pickup_nodes
+     WHERE organization_id = $1 AND ride_id = $2 ORDER BY node_index`,
+    [req.auth.orgId, req.params.id]
+  )).rows;
+  res.json({ ride, bookings, nodes });
 }));
 
 /** POST /api/rides — publish a ride (driver). */
 router.post('/', asyncHandler(async (req, res) => {
   const b = req.body || {};
-  // farePerSeat is no longer accepted from the driver — calculated server-side.
   const required = ['vehicleId', 'pickupAddress', 'pickupLat', 'pickupLng',
     'destinationAddress', 'destinationLat', 'destinationLng', 'departureDatetime', 'totalSeats'];
   for (const k of required) if (b[k] == null || b[k] === '') throw badRequest(`${k} is required`);
@@ -112,11 +169,11 @@ router.post('/', asyncHandler(async (req, res) => {
     throw badRequest(`Seats offered cannot exceed vehicle capacity (${vehicle.seating_capacity})`);
   }
 
-  // Compute route (distance/duration/polyline) from driver's full pickup→destination.
-  // Free OSRM, fallback to haversine.
+  // Compute route (distance/duration/polyline) from OSRM.
   let distanceKm = null;
   let durationMinutes = null;
   let polyline = null;
+  let routeGeometry = null;
   try {
     const route = await getRoute(
       { lat: +b.pickupLat, lng: +b.pickupLng },
@@ -124,6 +181,7 @@ router.post('/', asyncHandler(async (req, res) => {
     );
     distanceKm = route.distanceKm;
     durationMinutes = route.durationMinutes;
+    routeGeometry = route.geometry;
     polyline = JSON.stringify(route.geometry);
   } catch {
     distanceKm = haversineKm(
@@ -132,13 +190,12 @@ router.post('/', asyncHandler(async (req, res) => {
     );
   }
 
-  // Fetch admin-configured cost_per_km for this organisation, then auto-calculate fare.
+  // Auto-calculate fare.
   const settings = (await query(
     'SELECT cost_per_km FROM organization_settings WHERE organization_id = $1',
     [req.auth.orgId]
   )).rows[0];
   const costPerKm = Number(settings?.cost_per_km ?? 0);
-  // fare_per_seat = cost_per_km × driver's full route distance (min ₹1 when rate is set).
   const farePerSeat = costPerKm > 0 && distanceKm
     ? Math.max(1, +(costPerKm * distanceKm).toFixed(2))
     : 0;
@@ -161,7 +218,33 @@ router.post('/', asyncHandler(async (req, res) => {
      !!b.isRecurring, b.recurrencePattern ? JSON.stringify(b.recurrencePattern) : null]
   )).rows[0];
 
-  res.status(201).json({ ride: row });
+  // ── Generate pickup nodes from the OSRM route ──────────────────────
+  let nodes = [];
+  if (routeGeometry) {
+    const sampledPoints = sampleRouteNodes(routeGeometry, distanceKm);
+
+    // Insert all nodes; reverse-geocode addresses in the background (non-blocking).
+    for (const pt of sampledPoints) {
+      const nodeRow = (await query(
+        `INSERT INTO ride_pickup_nodes (organization_id, ride_id, node_index, lat, lng)
+         VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+        [req.auth.orgId, row.ride_id, pt.nodeIndex, pt.lat, pt.lng]
+      )).rows[0];
+      nodes.push(nodeRow);
+
+      // Async reverse geocode — fire & forget, update address when done.
+      reverseGeocode(pt.lat, pt.lng).then((addr) => {
+        if (addr) {
+          query(
+            'UPDATE ride_pickup_nodes SET address = $1 WHERE node_id = $2',
+            [addr, nodeRow.node_id]
+          ).catch(() => {}); // best-effort
+        }
+      }).catch(() => {});
+    }
+  }
+
+  res.status(201).json({ ride: row, nodes });
 }));
 
 /** PATCH /api/rides/:id/cancel — driver cancels an open ride. */
@@ -173,7 +256,6 @@ router.patch('/:id/cancel', asyncHandler(async (req, res) => {
     [req.params.id, req.auth.orgId, req.auth.employeeId]
   )).rows[0];
   if (!ride) throw notFound('Ride not found or cannot be cancelled');
-  // Cancel outstanding bookings + trips.
   await query(
     `UPDATE ride_bookings SET booking_status='CANCELLED', cancelled_at=now()
      WHERE ride_id=$1 AND organization_id=$2 AND booking_status='CONFIRMED'`,

@@ -82,3 +82,27 @@ export function haversineKm(a, b) {
   const x = Math.sin(dLat / 2) ** 2 + Math.sin(dLng / 2) ** 2 * Math.cos(lat1) * Math.cos(lat2);
   return +(R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x))).toFixed(2);
 }
+
+/**
+ * Sample N evenly-spaced pickup nodes from an OSRM GeoJSON LineString.
+ * @param {object} geometry  - GeoJSON LineString {type, coordinates:[[lng,lat],...]}
+ * @param {number} distanceKm - total route distance (used to pick node count)
+ * @returns {Array<{lat,lng,nodeIndex}>}
+ */
+export function sampleRouteNodes(geometry, distanceKm) {
+  const coords = geometry?.coordinates;
+  if (!coords || coords.length < 2) return [];
+
+  // Choose count: 3 for short routes, up to 6 for long ones (every ~10km).
+  const count = Math.min(6, Math.max(3, Math.round(distanceKm / 10) + 2));
+
+  const points = [];
+  for (let i = 0; i < count; i++) {
+    // Evenly space indices across the coordinate array (skip pure start/end which are driver's own points).
+    const fraction = (i + 1) / (count + 1);  // e.g. for count=3: 0.25, 0.5, 0.75
+    const idx = Math.round(fraction * (coords.length - 1));
+    const [lng, lat] = coords[Math.min(idx, coords.length - 1)];
+    points.push({ lat: +lat.toFixed(6), lng: +lng.toFixed(6), nodeIndex: i });
+  }
+  return points;
+}

@@ -35,6 +35,7 @@ export default function OfferRide() {
   const [pickup, setPickup] = useState(null);
   const [dest,   setDest]   = useState(null);
   const [route,  setRoute]  = useState(null);
+  const [nodes,  setNodes]  = useState([]);
   const [busy,   setBusy]   = useState(false);
   const [error,  setError]  = useState('');
 
@@ -68,7 +69,7 @@ export default function OfferRide() {
     setBusy(true);
     try {
       const departure = new Date(`${form.date}T${form.time}`).toISOString();
-      await api.post('/rides', {
+      const { data } = await api.post('/rides', {
         vehicleId: form.vehicleId,
         pickupAddress: pickup.address, pickupLat: pickup.lat, pickupLng: pickup.lng,
         destinationAddress: dest.address, destinationLat: dest.lat, destinationLng: dest.lng,
@@ -77,7 +78,13 @@ export default function OfferRide() {
         isRecurring: form.isRecurring,
         recurrencePattern: form.isRecurring ? { days: form.selectedDays } : null,
       });
-      navigate('/app/trips?role=driver');
+      if (data.nodes?.length) {
+        setNodes(data.nodes);
+        // Stay on page briefly to show nodes, then navigate
+        setTimeout(() => navigate('/app/trips?role=driver'), 3000);
+      } else {
+        navigate('/app/trips?role=driver');
+      }
     } catch (e) { setError(apiError(e)); }
     finally { setBusy(false); }
   };
@@ -232,9 +239,27 @@ export default function OfferRide() {
             <div className="flex items-center gap-2 text-xs">
               <span className="rounded-lg bg-brand/10 px-2.5 py-1 font-bold text-brand-dark ring-1 ring-brand/20">{route.distanceKm} km</span>
               <span className="rounded-lg bg-ink-100/70 px-2.5 py-1 font-bold text-ink-600 ring-1 ring-ink-200/70">~{route.durationMinutes} min</span>
+              {nodes.length > 0 && (
+                <span className="rounded-lg bg-orange-100 text-orange-700 px-2.5 py-1 font-bold ring-1 ring-orange-200/70">
+                  🚏 {nodes.length} pickup stops
+                </span>
+              )}
             </div>
           </div>
-          <MapView pickup={pickup} destination={dest} routeGeometry={route.geometry} height={300} follow={false} />
+          {nodes.length > 0 && (
+            <div className="px-5 py-2.5 bg-orange-50 border-b border-orange-100 text-xs text-orange-700">
+              <strong>Shared pickup stops</strong> have been placed along your route.
+              Passengers within 5 km of any stop will see your ride.
+            </div>
+          )}
+          <MapView
+            pickup={pickup}
+            destination={dest}
+            routeGeometry={route.geometry}
+            pickupNodes={nodes}
+            height={300}
+            follow={false}
+          />
         </Card>
       )}
     </div>

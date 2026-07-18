@@ -123,14 +123,16 @@ function AnimatedCarMarker({ position }) {
 
 /* ── Main component ─────────────────────────────────────── */
 /**
- * @param {object} pickup        { lat, lng, address? }
- * @param {object} destination   { lat, lng, address? }
- * @param {*}      routeGeometry GeoJSON LineString | encoded string | null
- * @param {object} vehicle       { lat, lng } — live car position (driver)
- * @param {object} myLocation    { lat, lng } — logged-in user's live GPS
- * @param {number} height        px height of the map
- * @param {boolean} follow       pan map to vehicle when it moves
- * @param {boolean} liveTrip     if true, use animated dashed polyline style
+ * @param {object}   pickup        { lat, lng, address? }
+ * @param {object}   destination   { lat, lng, address? }
+ * @param {*}        routeGeometry GeoJSON LineString | encoded string | null
+ * @param {object}   vehicle       { lat, lng } — live car position (driver)
+ * @param {object}   myLocation    { lat, lng } — logged-in user's live GPS
+ * @param {number}   height        px height of the map
+ * @param {boolean}  follow        pan map to vehicle when it moves
+ * @param {boolean}  liveTrip      if true, use animated dashed polyline style
+ * @param {Array}    pickupNodes   [{node_id, lat, lng, address, node_index}] — shared pickup stops
+ * @param {string}   selectedNodeId — node_id of the node the passenger selected
  */
 export default function MapView({
   pickup,
@@ -141,6 +143,8 @@ export default function MapView({
   height = 360,
   follow = true,
   liveTrip = false,
+  pickupNodes = [],
+  selectedNodeId = null,
 }) {
   const center = pickup || destination || myLocation || { lat: 12.9716, lng: 77.5946 };
 
@@ -219,6 +223,35 @@ export default function MapView({
         )
       )}
 
+      {/* Pickup nodes — shared stops along driver route */}
+      {pickupNodes.map((node) => {
+        const isSelected = node.node_id === selectedNodeId;
+        return (
+          <CircleMarker
+            key={node.node_id}
+            center={[+node.lat, +node.lng]}
+            radius={isSelected ? 12 : 8}
+            pathOptions={{
+              color: isSelected ? '#16a34a' : '#f97316',
+              fillColor: isSelected ? '#22c55e' : '#fb923c',
+              fillOpacity: 0.9,
+              weight: isSelected ? 3 : 2,
+            }}
+          >
+            <Popup>
+              <div style={{ fontWeight: 600, marginBottom: 2 }}>
+                🚏 Stop #{node.node_index + 1}
+                {isSelected && ' ✓ Your pickup'}
+              </div>
+              {node.address && <div style={{ fontSize: 12, color: '#555' }}>{node.address}</div>}
+              <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>
+                {(+node.lat).toFixed(5)}, {(+node.lng).toFixed(5)}
+              </div>
+            </Popup>
+          </CircleMarker>
+        );
+      })}
+
       {/* Animated car (driver live position) */}
       {vehicle && <AnimatedCarMarker position={vehicle} />}
 
@@ -231,7 +264,10 @@ export default function MapView({
 
       {/* Map auto-behaviors */}
       {follow && vehicle && <Recenter point={vehicle} />}
-      {!vehicle && <FitBounds points={[pickup, destination, myLocation].filter(Boolean)} />}
+      {!vehicle && <FitBounds points={[
+        pickup, destination, myLocation,
+        ...(pickupNodes.map((n) => ({ lat: +n.lat, lng: +n.lng })))
+      ].filter(Boolean)} />}
     </MapContainer>
   );
 }

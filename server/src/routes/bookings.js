@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { query, withTenant } from '../db.js';
 import { asyncHandler, badRequest, notFound } from '../utils/http.js';
 import { requireAuth, requireEmployee } from '../middleware/auth.js';
+import { haversineKm } from '../utils/geo.js';
 
 const router = Router();
 router.use(requireAuth, requireEmployee);
@@ -12,11 +13,30 @@ router.use(requireAuth, requireEmployee);
  * Atomically decrements seats, creates booking + trip, notifies the driver.
  */
 router.post('/', asyncHandler(async (req, res) => {
-  const { rideId } = req.body || {};
+  const { rideId, pickupNodeId, passengerLat, passengerLng } = req.body || {};
   const seats = parseInt(req.body?.seats, 10) || 1;
   if (!rideId) throw badRequest('rideId is required');
+  if (!pickupNodeId) throw badRequest('pickupNodeId is required — search for a ride first to get a pickup node');
   const orgId = req.auth.orgId;
   const passengerId = req.auth.employeeId;
+
+  // Validate pickup node exists and belongs to this ride.
+  const nodeRow = (await query(
+    `SELECT * FROM ride_pickup_nodes WHERE node_id = $1 AND ride_id = $2`,
+    [pickupNodeId, rideId]
+  )).rows[0];
+  if (!nodeRow) throw badRequest('Invalid pickup node for this ride');
+
+  // If passenger provides their current location, enforce 5km radius.
+  if (passengerLat && passengerLng && !isNaN(+passengerLat) && !isNaN(+passengerLng)) {
+    const dist = haversineKm(
+      { lat: +passengerLat, lng: +passengerLng },
+      { lat: +nodeRow.lat, lng: +nodeRow.lng }
+    );
+    if (dist > 5) {
+      throw badRequest(`You are ${dist.toFixed(1)} km from pickup node — must be within 5 km to book`);
+    }
+  }
 
   const result = await withTenant(orgId, async (client) => {
     // Lock the ride row.
@@ -39,9 +59,9 @@ router.post('/', asyncHandler(async (req, res) => {
     const fare = (Number(ride.fare_per_seat) * seats).toFixed(2);
 
     const booking = (await client.query(
-      `INSERT INTO ride_bookings (organization_id, ride_id, passenger_employee_id, seats_booked, fare_amount)
-       VALUES ($1,$2,$3,$4::smallint,$5) RETURNING *`,
-      [orgId, rideId, passengerId, seats, fare]
+      `INSERT INTO ride_bookings (organization_id, ride_id, passenger_employee_id, seats_booked, fare_amount, pickup_node_id)
+       VALUES ($1,$2,$3,$4::smallint,$5,$6) RETURNING *`,
+      [orgId, rideId, passengerId, seats, fare, pickupNodeId]
     )).rows[0];
 
     const newAvail = ride.available_seats - seats;

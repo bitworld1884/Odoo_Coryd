@@ -161,6 +161,22 @@ CREATE INDEX IF NOT EXISTS idx_rides_search     ON rides(organization_id, depart
 CREATE INDEX IF NOT EXISTS idx_rides_driver     ON rides(organization_id, driver_employee_id);
 
 -- =========================================================
+-- 5b. RIDE PICKUP NODES (waypoints along the driver's OSRM route)
+-- =========================================================
+CREATE TABLE IF NOT EXISTS ride_pickup_nodes (
+    node_id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id UUID NOT NULL REFERENCES organizations(organization_id) ON DELETE CASCADE,
+    ride_id         UUID NOT NULL,
+    node_index      SMALLINT NOT NULL,  -- 0..N ordering along the route
+    lat             DECIMAL(9,6) NOT NULL,
+    lng             DECIMAL(9,6) NOT NULL,
+    address         TEXT,               -- reverse-geocoded label (async, may be NULL briefly)
+    FOREIGN KEY (organization_id, ride_id) REFERENCES rides(organization_id, ride_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_pickup_nodes_ride ON ride_pickup_nodes(organization_id, ride_id);
+
+
+-- =========================================================
 -- 6. RIDE BOOKINGS
 -- =========================================================
 CREATE TABLE IF NOT EXISTS ride_bookings (
