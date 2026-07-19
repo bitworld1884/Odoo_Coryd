@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Map, Search, ClipboardList, MapPin, ArrowRight, Navigation, Armchair, CalendarClock, AlertTriangle } from 'lucide-react';
+import { Map, Search, ClipboardList, MapPin, ArrowRight, Navigation, Armchair, CalendarClock, AlertTriangle, CheckCircle2, X } from 'lucide-react';
 import api, { apiError } from '../api.js';
 import AddressInput from '../components/AddressInput.jsx';
 import MapView from '../components/MapView.jsx';
@@ -25,7 +25,9 @@ export default function FindRide() {
   const [error, setError] = useState('');
   const [bookingId, setBookingId] = useState(null);
   const [myLocation, setMyLocation] = useState(null);
-  const [searchId, setSearchId] = useState(0);   // bumps on each new search → resets pagination
+  const [searchId, setSearchId] = useState(0);
+  const [bookedInfo, setBookedInfo] = useState(null); // triggers success modal
+  const autoNavTimer = useRef(null);
 
   /* Paginate the result set */
   const pager = usePagination(rides, PER_PAGE, searchId);
@@ -129,12 +131,26 @@ export default function FindRide() {
         rideId: ride.ride_id,
         seats,
         pickupNodeId: ride.nearest_node.node_id,
-        // Include current location for server-side validation if available
         ...(myLocation ? { passengerLat: myLocation.lat, passengerLng: myLocation.lng } : {}),
       });
-      navigate(`/app/trips/${data.trip.trip_id}`);
+      // Show success modal instead of immediately navigating
+      setBookedInfo({ trip: data.trip, ride, booking: data.booking });
+      setRideState((s) => ({ ...s, rideStatus: 'RIDING' }));
+      // Auto-navigate after 4 seconds
+      autoNavTimer.current = setTimeout(() => {
+        navigate(`/app/trips/${data.trip.trip_id}`);
+      }, 4000);
     } catch (e) { setError(apiError(e)); setBookingId(null); }
   };
+
+  /* Dismiss modal and navigate */
+  const goToTrip = () => {
+    clearTimeout(autoNavTimer.current);
+    if (bookedInfo) navigate(`/app/trips/${bookedInfo.trip.trip_id}`);
+  };
+
+  // Cleanup timer on unmount
+  useEffect(() => () => clearTimeout(autoNavTimer.current), []);
 
   /* ── Fetch nodes for a ride (for map preview) ── */
   const showOnMap = async (ride) => {
@@ -171,6 +187,113 @@ export default function FindRide() {
 
   return (
     <div className="space-y-5">
+
+      {/* ═══ BOOKING SUCCESS MODAL ═══════════════════════════════════════ */}
+      {bookedInfo && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(6px)' }}
+        >
+          <div
+            className="relative w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-slate-900"
+            style={{ animation: 'slideUp 0.35s cubic-bezier(0.34,1.56,0.64,1)' }}
+          >
+            {/* Green success header */}
+            <div className="flex flex-col items-center gap-3 bg-gradient-to-br from-emerald-500 to-green-600 px-6 pt-8 pb-6 text-white">
+              <span className="flex h-16 w-16 items-center justify-center rounded-full bg-white/20 ring-4 ring-white/30">
+                <CheckCircle2 className="h-9 w-9 text-white" />
+              </span>
+              <h2 className="text-2xl font-extrabold tracking-tight">Ride Booked! 🎉</h2>
+              <p className="text-sm text-emerald-100">Your seat is confirmed</p>
+            </div>
+
+            {/* Countdown bar */}
+            <div className="h-1 w-full bg-emerald-100">
+              <div
+                className="h-full bg-emerald-500"
+                style={{ animation: 'shrinkBar 4s linear forwards' }}
+              />
+            </div>
+
+            {/* Details */}
+            <div className="space-y-3 px-6 py-5">
+              <div className="flex items-center justify-between rounded-xl bg-slate-50 px-4 py-3 dark:bg-slate-800">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Driver</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-200">{bookedInfo.ride.driver_name}</span>
+              </div>
+              <div className="flex items-center justify-between rounded-xl bg-slate-50 px-4 py-3 dark:bg-slate-800">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Vehicle</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-200">
+                  {bookedInfo.ride.vehicle_model} · {bookedInfo.ride.registration_number}
+                </span>
+              </div>
+              {bookedInfo.ride.nearest_node && (
+                <div className="flex items-start gap-2 rounded-xl bg-orange-50 px-4 py-3 dark:bg-orange-900/20">
+                  <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-orange-500" />
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold uppercase tracking-wider text-orange-400">Your Pickup Stop</p>
+                    <p className="text-sm font-semibold text-orange-800 dark:text-orange-300">
+                      Stop #{bookedInfo.ride.nearest_node.node_index + 1}
+                      {bookedInfo.ride.nearest_node.address ? ` — ${bookedInfo.ride.nearest_node.address}` : ''}
+                    </p>
+                  </div>
+                </div>
+              )}
+              <div className="flex items-center justify-between rounded-xl bg-slate-50 px-4 py-3 dark:bg-slate-800">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Departure</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-200">
+                  {new Date(bookedInfo.ride.departure_datetime).toLocaleString()}
+                </span>
+              </div>
+              <div className="flex items-center justify-between rounded-xl bg-slate-50 px-4 py-3 dark:bg-slate-800">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Seats · Fare</span>
+                <span className="font-bold text-brand-dark">
+                  {seats} seat{seats > 1 ? 's' : ''} · {money(bookedInfo.ride.fare_per_seat * seats)}
+                </span>
+              </div>
+            </div>
+
+            <p className="px-6 pb-2 text-center text-xs text-slate-400">Redirecting to your trip in 4 seconds…</p>
+
+            {/* CTAs */}
+            <div className="flex gap-3 px-6 pb-6">
+              <button
+                onClick={() => setBookedInfo(null)}
+                className="flex-1 rounded-xl border border-slate-200 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-400"
+              >
+                Stay here
+              </button>
+              <button
+                onClick={goToTrip}
+                className="flex-1 rounded-xl bg-gradient-to-br from-emerald-500 to-green-600 py-2.5 text-sm font-bold text-white shadow-lg hover:opacity-90 active:scale-95 transition-all"
+              >
+                View Trip →
+              </button>
+            </div>
+
+            {/* Close X */}
+            <button
+              onClick={() => setBookedInfo(null)}
+              className="absolute right-4 top-4 rounded-full p-1.5 text-white/70 hover:bg-white/20"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          {/* Keyframe styles */}
+          <style>{`
+            @keyframes slideUp {
+              from { opacity: 0; transform: translateY(40px) scale(0.96); }
+              to   { opacity: 1; transform: translateY(0)    scale(1); }
+            }
+            @keyframes shrinkBar {
+              from { width: 100%; }
+              to   { width: 0%; }
+            }
+          `}</style>
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
         <PageTitle icon={Search} subtitle="Search rides published by colleagues on your route.">
           Find a Ride
