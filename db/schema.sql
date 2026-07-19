@@ -190,6 +190,8 @@ CREATE TABLE IF NOT EXISTS ride_bookings (
                             CHECK (booking_status IN ('CONFIRMED','CANCELLED','COMPLETED')),
     booked_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
     cancelled_at          TIMESTAMPTZ,
+    passenger_pickup_lat   DECIMAL(9,6),
+    passenger_pickup_lng   DECIMAL(9,6),
     UNIQUE (organization_id, booking_id),
     UNIQUE (organization_id, ride_id, passenger_employee_id),  -- one active booking per rider per ride
     FOREIGN KEY (organization_id, passenger_employee_id)

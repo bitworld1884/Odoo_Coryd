@@ -15,6 +15,7 @@ const TRIP_JOIN = `
          pu.full_name AS passenger_name, pu.phone_number AS passenger_phone,
          v.vehicle_model, v.registration_number,
          bk.seats_booked, bk.fare_amount,
+         bk.passenger_pickup_lat, bk.passenger_pickup_lng,
          pn.lat AS pickup_node_lat, pn.lng AS pickup_node_lng, pn.address AS pickup_node_address
   FROM trips t
   JOIN rides r      ON r.ride_id = t.ride_id AND r.organization_id = t.organization_id

@@ -24,6 +24,9 @@ async function migrate() {
     await c.query(`
       ALTER TABLE ride_bookings
         ADD COLUMN IF NOT EXISTS pickup_node_id UUID REFERENCES ride_pickup_nodes(node_id);
+      ALTER TABLE ride_bookings
+        ADD COLUMN IF NOT EXISTS passenger_pickup_lat DECIMAL(9,6),
+        ADD COLUMN IF NOT EXISTS passenger_pickup_lng DECIMAL(9,6);
     `);
 
     console.log('Migration successful.');

@@ -79,7 +79,7 @@ export default function RazorpayButton({ tripId, amount, onSuccess, onError, dis
     } catch (e) {
       // "Payment cancelled by user" is not an error — just log silently
       if (e.message !== 'Payment cancelled by user') {
-        onError?.(e.message || 'Payment failed. Please try again.');
+        onError?.(e?.response?.data?.error || e.message || 'Payment failed. Please try again.');
       }
     } finally {
       setLoading(false);

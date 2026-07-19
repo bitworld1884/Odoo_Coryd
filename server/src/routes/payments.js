@@ -2,7 +2,7 @@ import { Router } from 'express';
 import crypto from 'crypto';
 import Razorpay from 'razorpay';
 import { query, withTenant } from '../db.js';
-import { asyncHandler, badRequest, notFound, forbidden } from '../utils/http.js';
+import { ApiError, asyncHandler, badRequest, notFound, forbidden } from '../utils/http.js';
 import { requireAuth, requireEmployee } from '../middleware/auth.js';
 import config from '../config.js';
 
@@ -32,6 +32,29 @@ function verifySignature(orderId, paymentId, signature) {
     .update(body)
     .digest('hex');
   return expected === signature;
+}
+
+function razorpayMessage(err, fallback = 'Razorpay request failed') {
+  return err?.error?.description
+    || err?.error?.reason
+    || err?.error?.message
+    || err?.description
+    || err?.message
+    || fallback;
+}
+
+function razorpayStatus(err) {
+  const status = Number(err?.statusCode || err?.status || err?.error?.statusCode);
+  return status >= 400 && status < 500 ? status : 502;
+}
+
+async function runRazorpay(action, fallback) {
+  try {
+    return await action();
+  } catch (err) {
+    console.error('[razorpay]', razorpayMessage(err, fallback), err?.error || err);
+    throw new ApiError(razorpayStatus(err), razorpayMessage(err, fallback));
+  }
 }
 
 /* ─────────────────────────────────────────────────────────────────
@@ -71,7 +94,7 @@ router.post('/razorpay/qr', asyncHandler(async (req, res) => {
   // QR code expires in 15 minutes
   const closeBy = Math.floor(Date.now() / 1000) + 15 * 60;
 
-  const qr = await rzpClient.qrCode.create({
+  const qr = await runRazorpay(() => rzpClient.qrCode.create({
     type:           'upi_qr',
     name:           'CoRYD Payment',
     usage:          'single_use',
@@ -79,7 +102,7 @@ router.post('/razorpay/qr', asyncHandler(async (req, res) => {
     payment_amount: amountPaise,
     description:    `Trip payment — ₹${payment.amount}`,
     close_by:       closeBy,
-  });
+  }), 'Failed to create Razorpay QR code');
 
   // Store QR id so we can poll its status later
   await query(
@@ -107,7 +130,10 @@ router.get('/razorpay/qr/:qrId/status', asyncHandler(async (req, res) => {
   const orgId = req.auth.orgId;
 
   // Fetch payments made on this QR from Razorpay
-  const { items } = await rzpClient.qrCode.fetchAllPayments(req.params.qrId, {});
+  const { items } = await runRazorpay(
+    () => rzpClient.qrCode.fetchAllPayments(req.params.qrId, {}),
+    'Failed to fetch Razorpay QR payment status'
+  );
   const paid = items?.find((p) => p.status === 'captured');
 
   if (paid) {
@@ -163,7 +189,7 @@ router.post('/razorpay/order', asyncHandler(async (req, res) => {
   // Amount in paise (Razorpay uses smallest currency unit)
   const amountPaise = Math.round(Number(payment.amount) * 100);
 
-  const order = await rzpClient.orders.create({
+  const order = await runRazorpay(() => rzpClient.orders.create({
     amount:   amountPaise,
     currency: 'INR',
     receipt:  `trip_${tripId.slice(0, 8)}`,
@@ -172,7 +198,7 @@ router.post('/razorpay/order', asyncHandler(async (req, res) => {
       orgId,
       paymentId: payment.payment_id,
     },
-  });
+  }), 'Failed to create Razorpay order');
 
   // Persist the razorpay order id on the payment row for later verification
   await query(

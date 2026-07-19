@@ -25,6 +25,7 @@ export default function FindRide() {
   const [error, setError] = useState('');
   const [bookingId, setBookingId] = useState(null);
   const [myLocation, setMyLocation] = useState(null);
+  const [searchedPickup, setSearchedPickup] = useState(null);
   const [searchId, setSearchId] = useState(0);
   const [bookedInfo, setBookedInfo] = useState(null); // triggers success modal
   const autoNavTimer = useRef(null);
@@ -94,6 +95,7 @@ export default function FindRide() {
     if (mode === 'schedule' && !date) return setError('Choose a travel date for scheduled rides');
     if (!pickup) setPickup(p);
     if (!dest) setDest(d);
+    setSearchedPickup(p);
     setError(''); setBusy(true); setRides(null); setPreviewRide(null);
     try {
       const { data } = await api.get('/rides', {
@@ -131,7 +133,7 @@ export default function FindRide() {
         rideId: ride.ride_id,
         seats,
         pickupNodeId: ride.nearest_node.node_id,
-        ...(myLocation ? { passengerLat: myLocation.lat, passengerLng: myLocation.lng } : {}),
+        ...(searchedPickup ? { passengerLat: searchedPickup.lat, passengerLng: searchedPickup.lng } : {}),
       });
       // Show success modal instead of immediately navigating
       setBookedInfo({ trip: data.trip, ride, booking: data.booking });
@@ -448,7 +450,9 @@ export default function FindRide() {
             pickup={previewRide ? { lat: +previewRide.pickup_lat, lng: +previewRide.pickup_lng, address: previewRide.pickup_address } : pickup}
             destination={previewRide ? { lat: +previewRide.destination_lat, lng: +previewRide.destination_lng, address: previewRide.destination_address } : dest}
             routeGeometry={previewRide ? previewRide.route_polyline : route?.geometry}
-            myLocation={myLocation}
+            myLocation={previewRide ? null : myLocation}
+            riderOrigin={previewRide ? searchedPickup : null}
+            riderPickup={previewRide?.nearest_node ? { lat: +previewRide.nearest_node.lat, lng: +previewRide.nearest_node.lng } : null}
             pickupNodes={previewNodes}
             selectedNodeId={previewRide?.nearest_node?.node_id}
             height={320}

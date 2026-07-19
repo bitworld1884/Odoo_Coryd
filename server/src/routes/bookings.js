@@ -9,7 +9,7 @@ router.use(requireAuth, requireEmployee);
 
 /**
  * POST /api/bookings — book a seat on a ride.
- * body: { rideId, seats? }
+ * body: { rideId, seats?, pickupNodeId, passengerLat?, passengerLng? }
  * Atomically decrements seats, creates booking + trip, notifies the driver.
  */
 router.post('/', asyncHandler(async (req, res) => {
@@ -27,7 +27,7 @@ router.post('/', asyncHandler(async (req, res) => {
   )).rows[0];
   if (!nodeRow) throw badRequest('Invalid pickup node for this ride');
 
-  // If passenger provides their current location, enforce 5km radius.
+  // If passenger provides their entered pickup, enforce 5km radius.
   if (passengerLat && passengerLng && !isNaN(+passengerLat) && !isNaN(+passengerLng)) {
     const dist = haversineKm(
       { lat: +passengerLat, lng: +passengerLng },
@@ -91,9 +91,16 @@ router.post('/', asyncHandler(async (req, res) => {
     const fare = (Number(ride.fare_per_seat) * seats).toFixed(2);
 
     const booking = (await client.query(
-      `INSERT INTO ride_bookings (organization_id, ride_id, passenger_employee_id, seats_booked, fare_amount, pickup_node_id)
-       VALUES ($1,$2,$3,$4::smallint,$5,$6) RETURNING *`,
-      [orgId, rideId, passengerId, seats, fare, pickupNodeId]
+      `INSERT INTO ride_bookings (
+         organization_id, ride_id, passenger_employee_id, seats_booked, fare_amount,
+         pickup_node_id, passenger_pickup_lat, passenger_pickup_lng
+       )
+       VALUES ($1,$2,$3,$4::smallint,$5,$6,$7,$8) RETURNING *`,
+      [
+        orgId, rideId, passengerId, seats, fare, pickupNodeId,
+        passengerLat && !isNaN(+passengerLat) ? +passengerLat : null,
+        passengerLng && !isNaN(+passengerLng) ? +passengerLng : null,
+      ]
     )).rows[0];
 
     const newAvail = ride.available_seats - seats;

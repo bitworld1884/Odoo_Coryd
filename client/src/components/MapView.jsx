@@ -1,6 +1,7 @@
 import { MapContainer, TileLayer, Marker, Popup, Polyline, CircleMarker, useMap } from 'react-leaflet';
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
+import api from '../api.js';
 
 /* ── Icons ─────────────────────────────────────────────── */
 const pinIcon = (color) =>
@@ -84,6 +85,23 @@ function FitBounds({ points }) {
   return null;
 }
 
+function getClosestRoutePoint(routeLine, point) {
+  if (!routeLine?.length || !point) return null;
+
+  let bestPoint = null;
+  let minDist = Infinity;
+
+  routeLine.forEach(([lat, lng]) => {
+    const d = Math.hypot(lat - point.lat, lng - point.lng);
+    if (d < minDist) {
+      minDist = d;
+      bestPoint = [lat, lng];
+    }
+  });
+
+  return bestPoint;
+}
+
 /* Smoothly animate car marker to new position */
 function AnimatedCarMarker({ position }) {
   const markerRef = useRef(null);
@@ -128,6 +146,7 @@ function AnimatedCarMarker({ position }) {
  * @param {*}        routeGeometry GeoJSON LineString | encoded string | null
  * @param {object}   vehicle       { lat, lng } — live car position (driver)
  * @param {object}   myLocation    { lat, lng } — logged-in user's live GPS
+ * @param {object}   riderOrigin   { lat, lng } — pickup entered by rider
  * @param {number}   height        px height of the map
  * @param {boolean}  follow        pan map to vehicle when it moves
  * @param {boolean}  liveTrip      if true, use animated dashed polyline style
@@ -140,6 +159,7 @@ export default function MapView({
   routeGeometry,
   vehicle,
   myLocation,
+  riderOrigin = null,
   height = 360,
   follow = true,
   liveTrip = false,
@@ -175,15 +195,54 @@ export default function MapView({
     };
   }, [routeLine, vehicle, liveTrip]);
 
-  /* Calculate the Rider's segment: From their live GPS to the pickup point */
-  const riderSegment = useMemo(() => {
-    console.log('[DEBUG] MapView riderSegment recalc. myLocation:', myLocation, 'riderPickup:', riderPickup);
-    if (!myLocation || !riderPickup) return null;
-    return [
-      [myLocation.lat, myLocation.lng],
-      [riderPickup.lat, riderPickup.lng]
-    ];
-  }, [myLocation, riderPickup]);
+  const riderStart = riderOrigin;
+
+  const riderFallbackSegment = useMemo(() => {
+    if (!riderStart) return null;
+
+    const closestPoint = riderPickup
+      ? [riderPickup.lat, riderPickup.lng]
+      : getClosestRoutePoint(routeLine, riderStart);
+    if (closestPoint) {
+      return [
+        [riderStart.lat, riderStart.lng],
+        closestPoint
+      ];
+    }
+
+    return null;
+  }, [riderStart, routeLine, riderPickup]);
+
+  const [riderRouteLine, setRiderRouteLine] = useState(null);
+
+  useEffect(() => {
+    const riderTarget = riderPickup || (
+      routeLine ? (() => {
+        const point = getClosestRoutePoint(routeLine, riderStart);
+        return point ? { lat: point[0], lng: point[1] } : null;
+      })() : null
+    );
+
+    if (!riderStart || !riderTarget) {
+      setRiderRouteLine(null);
+      return;
+    }
+
+    let cancelled = false;
+    api.post('/geo/route', {
+      pickup: { lat: riderStart.lat, lng: riderStart.lng },
+      destination: { lat: riderTarget.lat, lng: riderTarget.lng },
+    }).then(({ data }) => {
+      if (cancelled || !data.geometry?.coordinates) return;
+      setRiderRouteLine(data.geometry.coordinates.map(([lng, lat]) => [lat, lng]));
+    }).catch(() => {
+      if (!cancelled) setRiderRouteLine(null);
+    });
+
+    return () => { cancelled = true; };
+  }, [riderStart, riderPickup, routeLine]);
+
+  const riderSegment = riderRouteLine?.length >= 2 ? riderRouteLine : riderFallbackSegment;
 
   return (
     <MapContainer
@@ -234,11 +293,11 @@ export default function MapView({
         )
       )}
 
-      {/* Rider's specific segment (Dotted overlay) */}
+      {/* Rider's walk segment (dotted overlay) to the first point of contact with the driver route */}
       {riderSegment && riderSegment.length >= 2 && (
         <Polyline
           positions={riderSegment}
-          pathOptions={{ color: '#f59e0b', weight: 6, opacity: 1, dashArray: '1, 10', lineJoin: 'round', lineCap: 'round' }}
+          pathOptions={{ color: '#f59e0b', weight: 6, opacity: 1, dashArray: '6 8', lineJoin: 'round', lineCap: 'round' }}
         />
       )}
 
@@ -275,16 +334,16 @@ export default function MapView({
       {vehicle && <AnimatedCarMarker position={vehicle} />}
 
       {/* User's own live location — pulsing blue dot */}
-      {myLocation && (
-        <Marker position={[myLocation.lat, myLocation.lng]} icon={myLocIcon}>
-          <Popup>Your location</Popup>
+      {riderStart && (
+        <Marker position={[riderStart.lat, riderStart.lng]} icon={myLocIcon}>
+          <Popup>Your entered pickup</Popup>
         </Marker>
       )}
 
       {/* Map auto-behaviors */}
       {follow && vehicle && <Recenter point={vehicle} />}
       {!vehicle && <FitBounds points={[
-        pickup, destination, myLocation, riderPickup,
+        pickup, destination, riderStart, riderPickup,
         ...(pickupNodes.map((n) => ({ lat: +n.lat, lng: +n.lng })))
       ].filter(Boolean)} />}
 
@@ -295,10 +354,10 @@ export default function MapView({
             <div style={{ width: '24px', height: '5px', backgroundColor: '#3b82f6', marginRight: '8px', borderRadius: '2px' }} />
             <span style={{ fontWeight: 600, color: '#334155' }}>Driver Route</span>
           </div>
-          {riderPickup && myLocation && (
+          {riderSegment && (
             <div style={{ display: 'flex', alignItems: 'center' }}>
               <div style={{ width: '24px', height: '0px', borderTop: '5px dotted #f59e0b', marginRight: '8px' }} />
-              <span style={{ fontWeight: 600, color: '#334155' }}>Walk to Pickup</span>
+              <span style={{ fontWeight: 600, color: '#334155' }}>Rider to Pickup</span>
             </div>
           )}
         </div>
